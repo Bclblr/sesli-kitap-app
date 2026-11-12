@@ -1,7 +1,8 @@
 import { Feather, Ionicons } from '@expo/vector-icons';
+import { BlurTargetView, BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
-import { useState, type ComponentProps } from 'react';
+import { useRef, useState, type ComponentProps, type ComponentRef } from 'react';
 import {
   Modal,
   Platform,
@@ -102,43 +103,65 @@ function Shelf({ title, books, onOpen }: { title: string; books: Book[]; onOpen:
   );
 }
 
+function BarBackground({ target, bottom = false }: { target: NonNullable<ComponentProps<typeof BlurView>["blurTarget"]>; bottom?: boolean }) {
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <BlurView
+        blurTarget={target}
+        blurMethod="dimezisBlurViewSdk31Plus"
+        intensity={bottom ? 55 : 43}
+        tint="dark"
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={[StyleSheet.absoluteFill, bottom ? styles.navShade : styles.headerShade]} />
+    </View>
+  );
+}
+
 function Home() {
   const insets = useSafeAreaInsets();
+  const backdrop = useRef<ComponentRef<typeof BlurTargetView>>(null);
   const [selected, setSelected] = useState<Book | null>(null);
   const [section, setSection] = useState<Exclude<Tab, 'home'> | null>(null);
 
   return (
     <View style={styles.screen}>
       <StatusBar style="light" />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 110 + insets.bottom }}>
-        <View style={[styles.hero, { paddingTop: insets.top }]}>
-          <LinearGradient
-            colors={['#34483f', '#24342d', '#111714', '#000000']}
-            locations={[0, 0.39, 0.73, 1]}
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={styles.header}>
-            <Ionicons name="headset-outline" size={25} color={accent} />
-            <Text style={styles.brand}>Sesli Kitap</Text>
+      <BlurTargetView ref={backdrop} style={styles.backdrop}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 110 + insets.bottom }}>
+          <View style={[styles.hero, { paddingTop: insets.top + 58 }]}>
+            <LinearGradient
+              colors={['#34483f', '#24342d', '#111714', '#000000']}
+              locations={[0, 0.39, 0.73, 1]}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.feature}>
+              <View style={styles.featureCover}><BookCover book={featured} large /></View>
+              <Text style={styles.featureTitle} accessibilityRole="header">{featured.title}</Text>
+              <Text style={styles.featureMeta}>{featured.author} · {featured.genre}</Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setSelected(featured)}
+                style={({ pressed }) => [styles.listen, pressed && styles.pressed]}
+              >
+                <Ionicons name="play" size={16} color="#17130e" />
+                <Text style={styles.listenText}>Dinle</Text>
+              </Pressable>
+            </View>
           </View>
-          <View style={styles.feature}>
-            <View style={styles.featureCover}><BookCover book={featured} large /></View>
-            <Text style={styles.featureTitle} accessibilityRole="header">{featured.title}</Text>
-            <Text style={styles.featureMeta}>{featured.author} · {featured.genre}</Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setSelected(featured)}
-              style={({ pressed }) => [styles.listen, pressed && styles.pressed]}
-            >
-              <Ionicons name="play" size={16} color="#17130e" />
-              <Text style={styles.listenText}>Dinle</Text>
-            </Pressable>
-          </View>
+          <Shelf title="Dinlemeye Devam Et" books={continuing} onOpen={setSelected} />
+          <Shelf title="Klasikler" books={classics} onOpen={setSelected} />
+        </ScrollView>
+      </BlurTargetView>
+      <View style={[styles.headerBar, { paddingTop: insets.top }]}>
+        <BarBackground target={backdrop} />
+        <View style={styles.header}>
+          <Ionicons name="headset-outline" size={25} color={accent} />
+          <Text style={styles.brand}>Sesli Kitap</Text>
         </View>
-        <Shelf title="Dinlemeye Devam Et" books={continuing} onOpen={setSelected} />
-        <Shelf title="Klasikler" books={classics} onOpen={setSelected} />
-      </ScrollView>
+      </View>
       <View style={[styles.nav, { bottom: Math.max(insets.bottom, 12) }]}>
+        <BarBackground target={backdrop} bottom />
         {tabs.map((tab) => (
           <Pressable
             key={tab.id}
@@ -190,7 +213,11 @@ const serif = Platform.select({ ios: 'Georgia', android: 'serif', default: 'seri
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#000' },
+  backdrop: { flex: 1 },
   hero: { paddingBottom: 30 },
+  headerBar: { position: 'absolute', top: 0, left: 0, right: 0, overflow: 'hidden' },
+  headerShade: { backgroundColor: 'rgba(15, 16, 15, 0.30)' },
+  navShade: { backgroundColor: 'rgba(25, 25, 24, 0.48)' },
   header: { minHeight: 58, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', gap: 10 },
   brand: { color: '#fff', fontWeight: '700', fontSize: 24, letterSpacing: -0.65 },
   feature: { alignItems: 'center', paddingTop: 8, paddingHorizontal: 20 },
@@ -216,9 +243,9 @@ const styles = StyleSheet.create({
   progress: { backgroundColor: accent, height: '100%' },
   bookTitle: { color: '#f7f6f3', fontSize: 13, fontWeight: '600', marginTop: 6 },
   bookAuthor: { color: '#aaa8a0', fontSize: 11, marginTop: 3 },
-  nav: { position: 'absolute', left: 16, right: 16, flexDirection: 'row', backgroundColor: '#242522', borderWidth: StyleSheet.hairlineWidth, borderColor: '#50504a', borderRadius: 32, padding: 5, maxWidth: 480, alignSelf: 'center' },
+  nav: { position: 'absolute', left: 16, right: 16, flexDirection: 'row', overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: '#50504a', borderRadius: 32, padding: 5, maxWidth: 480, alignSelf: 'center' },
   tab: { flex: 1, minHeight: 53, justifyContent: 'center', alignItems: 'center', gap: 4, borderRadius: 27 },
-  activeTab: { backgroundColor: '#383935' },
+  activeTab: { backgroundColor: 'rgba(255, 255, 255, 0.09)' },
   tabText: { color: '#b3b1ab', fontSize: 10 },
   activeTabText: { color: '#fff', fontWeight: '600' },
   pressed: { opacity: 0.75 },
