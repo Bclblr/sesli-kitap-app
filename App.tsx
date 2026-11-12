@@ -1,3 +1,5 @@
+import { supabase } from './supabase';
+import type { Session } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { BlurTargetView, BlurView } from 'expo-blur';
@@ -239,6 +241,7 @@ function LibraryScreen({ data, bottomPadding, onCreate, onOpen }: {
   const [newestFirst, setNewestFirst] = useState(true);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
+  useEffect(() => { supabase.from('profiles').select('display_name').eq('id', userId).maybeSingle().then(({ data }) => { if (data) setName(data.display_name ?? ''); }); }, [userId]);
   const section = librarySections.find((item) => item.id === collection);
   const list = data.lists.find((item) => item.id === collection);
   const bookIds = collection === 'saved' ? data.saved : list?.books ?? [];
@@ -385,7 +388,7 @@ function BarBackground({ target, bottom = false }: { target: NonNullable<Compone
 
 
 type ProfilePage = 'profile' | 'settings' | 'detail';
-function ProfileScreen({ onClose, bottomPadding }: { onClose: () => void; bottomPadding: number }) {
+function ProfileScreen({ onClose, bottomPadding, userId }: { onClose: () => void; bottomPadding: number; userId: string }) {
   const [page, setPage] = useState<ProfilePage>('profile');
   const [detail, setDetail] = useState('');
   const [name, setName] = useState('');
@@ -428,7 +431,7 @@ function ProfileScreen({ onClose, bottomPadding }: { onClose: () => void; bottom
               {editing ? (
                 <View style={profileStyles.editRow}>
                   <TextInput value={name} onChangeText={setName} autoFocus placeholder="Adın" placeholderTextColor="#777" style={profileStyles.nameInput} maxLength={40} />
-                  <Pressable onPress={() => setEditing(false)} style={profileStyles.editButton}><Text style={profileStyles.editText}>Kaydet</Text></Pressable>
+                  <Pressable onPress={async () => { const { error } = await supabase.from('profiles').upsert({ id: userId, display_name: name.trim() }); if (!error) setEditing(false); }} style={profileStyles.editButton}><Text style={profileStyles.editText}>Kaydet</Text></Pressable>
                 </View>
               ) : (
                 <Pressable onPress={() => setEditing(true)} style={profileStyles.nameButton}>
@@ -459,7 +462,8 @@ function ProfileScreen({ onClose, bottomPadding }: { onClose: () => void; bottom
             <Text style={profileStyles.sectionLabel}>DESTEK</Text>
             <View style={profileStyles.group}>
               {item('Yardım merkezi', 'help-circle', () => openDetail('Yardım merkezi'))}
-              {item('Kullanım koşulları', 'file-text', () => openDetail('Kullanım koşulları'), true)}
+              {item('Kullanım koşulları', 'file-text', () => openDetail('Kullanım koşulları'))}
+              {item('Çıkış yap', 'log-out', () => { supabase.auth.signOut(); }, true)}
             </View>
             <Text style={profileStyles.footnote}>Uygulama ayarları</Text>
           </>
@@ -594,7 +598,67 @@ const playerStyles = StyleSheet.create({
   notice: { marginTop: 14, textAlign: 'center', color: '#e7cfaa', fontSize: 13 },
 });
 
-function Home() {
+
+function AuthScreen() {
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const submit = async () => {
+    if (!email.includes('@') || password.length < 6) { setMessage('Geçerli bir e-posta ve en az 6 karakterli şifre gir.'); return; }
+    setBusy(true); setMessage('');
+    const { data, error } = mode === 'login'
+      ? await supabase.auth.signInWithPassword({ email: email.trim(), password })
+      : await supabase.auth.signUp({ email: email.trim(), password, options: { data: { display_name: name.trim() } } });
+    if (error) setMessage(error.message);
+    else if (mode === 'register' && !data.session) setMessage('Hesabını doğrulamak için e-posta kutunu kontrol et.');
+    setBusy(false);
+  };
+  return <View style={authStyles.root}>
+    <StatusBar style="light" />
+    <LinearGradient colors={['#273b32', '#121713', '#090a09']} style={StyleSheet.absoluteFill} />
+    <ScrollView contentContainerStyle={authStyles.content} keyboardShouldPersistTaps="handled">
+      <View style={authStyles.emblem}><Feather name="headphones" size={32} color={accent} /></View>
+      <Text style={authStyles.brand}>Sesli Kitap</Text>
+      <Text style={authStyles.tagline}>Bir hikâyeyle başlar.</Text>
+      <View style={authStyles.form}>
+        <Text style={authStyles.heading}>{mode === 'login' ? 'Tekrar hoş geldin' : 'Hikâyene katıl'}</Text>
+        <Text style={authStyles.description}>{mode === 'login' ? 'Kitaplığın seni bekliyor.' : 'Kendi kitaplığını oluşturmaya başla.'}</Text>
+        {mode === 'register' && <TextInput accessibilityLabel="Adın" value={name} onChangeText={setName} placeholder="Adın" placeholderTextColor="#888980" style={authStyles.input} />}
+        <TextInput accessibilityLabel="E-posta" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" autoComplete="email" placeholder="E-posta adresin" placeholderTextColor="#888980" style={authStyles.input} />
+        <TextInput accessibilityLabel="Şifre" value={password} onChangeText={setPassword} secureTextEntry autoComplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder="Şifre" placeholderTextColor="#888980" style={authStyles.input} />
+        {!!message && <Text accessibilityLiveRegion="polite" style={authStyles.message}>{message}</Text>}
+        <Pressable disabled={busy} accessibilityRole="button" onPress={submit} style={authStyles.primary}><Text style={authStyles.primaryText}>{busy ? 'Lütfen bekle...' : mode === 'login' ? 'Giriş yap' : 'Kayıt ol'}</Text><Feather name="arrow-right" size={18} color="#181811" /></Pressable>
+        {mode === 'login' && <Pressable onPress={async () => { if (!email.includes('@')) { setMessage('Önce e-posta adresini yaz.'); return; } const { error } = await supabase.auth.resetPasswordForEmail(email.trim()); setMessage(error?.message ?? 'Şifre yenileme bağlantısı e-postana gönderildi.'); }} style={authStyles.link}><Text style={authStyles.linkText}>Şifremi unuttum</Text></Pressable>}
+        <View style={authStyles.separator} />
+        <Pressable accessibilityRole="button" onPress={() => { setMode(mode === 'login' ? 'register' : 'login'); setMessage(''); }} style={authStyles.switch}><Text style={authStyles.switchText}>{mode === 'login' ? 'Hesabın yok mu?  Kayıt ol' : 'Zaten hesabın var mı?  Giriş yap'}</Text></Pressable>
+      </View>
+    </ScrollView>
+  </View>;
+}
+const authStyles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#090a09' },
+  content: { flexGrow: 1, paddingHorizontal: 27, justifyContent: 'center', paddingVertical: 70 },
+  emblem: { width: 66, height: 66, borderRadius: 21, backgroundColor: '#ffffff0d', borderWidth: 1, borderColor: '#ffffff25', alignItems: 'center', justifyContent: 'center', marginBottom: 22 },
+  brand: { color: '#f2ece0', fontFamily: serif, fontSize: 39, fontWeight: '700' },
+  tagline: { color: '#bcb6a8', fontSize: 16, marginTop: 6 },
+  form: { marginTop: 64 },
+  heading: { color: '#f2eee7', fontSize: 25, fontWeight: '700', marginBottom: 7 },
+  description: { color: '#aaa99f', marginBottom: 24 },
+  input: { backgroundColor: '#1b1f1b', borderWidth: 1, borderColor: '#3b4039', borderRadius: 15, paddingHorizontal: 17, height: 55, color: '#fff', fontSize: 15, marginBottom: 12 },
+  primary: { marginTop: 13, backgroundColor: accent, height: 55, borderRadius: 16, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 13 },
+  primaryText: { color: '#181811', fontWeight: '700', fontSize: 16 },
+  message: { color: '#edc9a4', fontSize: 13, marginTop: 4 },
+  link: { alignSelf: 'center', marginTop: 20 },
+  linkText: { color: '#d8bd90', fontWeight: '600' },
+  separator: { height: 1, backgroundColor: '#393d36', marginTop: 30, marginBottom: 22 },
+  switch: { alignItems: 'center', padding: 10 },
+  switchText: { color: '#e8e2d7', fontWeight: '600' },
+});
+
+function Home({ session }: { session: Session }) {
   const insets = useSafeAreaInsets();
   const backdrop = useRef<ComponentRef<typeof BlurTargetView>>(null);
   const [selected, setSelected] = useState<Book | null>(null);
@@ -603,29 +667,35 @@ function Home() {
   const [activeTab, setActiveTab] = useState<Exclude<Tab, 'profile'>>('home');
   const [library, setLibrary] = useState<LibraryData | null>(null);
   const [libraryError, setLibraryError] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.getItem(lastOpenedKey).then((id) => {
-      if (id) setLastOpened(catalogue.find((book) => book.id === id) ?? null);
-    }).catch(() => {});
-  }, []);
+    let active = true;
+    setLibrary(null); setLastOpened(null); setDataLoaded(false);
+    Promise.all([
+      supabase.from('user_libraries').select('saved,lists').eq('user_id', session.user.id).maybeSingle(),
+      supabase.from('listening_activity').select('book_id').eq('user_id', session.user.id).maybeSingle(),
+    ]).then(([lib, activity]) => {
+      if (!active) return;
+      if (lib.error || activity.error) setLibraryError(true);
+      setLibrary(lib.data ? { saved: lib.data.saved as string[], lists: lib.data.lists as LibraryList[] } : emptyLibrary);
+      const book = catalogue.find(item => item.id === activity.data?.book_id);
+      setLastOpened(book ?? null);
+      setDataLoaded(true);
+    }).catch(() => { if (active) { setLibrary(emptyLibrary); setLibraryError(true); setDataLoaded(true); } });
+    return () => { active = false; };
+  }, [session.user.id]);
+
+  useEffect(() => {
+    if (!dataLoaded || library === null) return;
+    supabase.from('user_libraries').upsert({ user_id: session.user.id, saved: library.saved, lists: library.lists, updated_at: new Date().toISOString() }).then(({ error }) => { if (error) setLibraryError(true); });
+  }, [library, dataLoaded, session.user.id]);
 
   function openBook(book: Book) {
     setLastOpened(book);
     setSelected(book);
-    AsyncStorage.setItem(lastOpenedKey, book.id).catch(() => {});
+    supabase.from('listening_activity').upsert({ user_id: session.user.id, book_id: book.id, updated_at: new Date().toISOString() }).then(({ error }) => { if (error) setLibraryError(true); });
   }
-
-  useEffect(() => {
-    AsyncStorage.getItem(libraryKey)
-      .then((value) => setLibrary(value ? JSON.parse(value) as LibraryData : emptyLibrary))
-      .catch(() => { setLibrary(emptyLibrary); setLibraryError(true); });
-  }, []);
-
-  useEffect(() => {
-    if (library === null || libraryError) return;
-    AsyncStorage.setItem(libraryKey, JSON.stringify(library)).catch(() => setLibraryError(true));
-  }, [library, libraryError]);
 
   function toggleSaved(id: string) {
     setLibrary((current) => current && {
@@ -663,7 +733,7 @@ function Home() {
       <StatusBar style="light" />
       <BlurTargetView ref={backdrop} style={styles.backdrop}>
         {showProfile ? (
-          <View style={{ flex: 1, paddingTop: insets.top }}><ProfileScreen onClose={() => setShowProfile(false)} bottomPadding={100 + insets.bottom} /></View>
+          <View style={{ flex: 1, paddingTop: insets.top }}><ProfileScreen onClose={() => setShowProfile(false)} bottomPadding={100 + insets.bottom} userId={session.user.id} /></View>
         ) : activeTab === 'library' ? (
           <View style={[styles.searchScreen, { paddingTop: insets.top + 58 }]}>
             {libraryError && <Text style={styles.libraryWarning}>Kitaplık değişiklikleri bu oturumda cihaza kaydedilemiyor.</Text>}
@@ -731,7 +801,14 @@ function Home() {
 }
 
 export default function App() {
-  return <SafeAreaProvider><Home /></SafeAreaProvider>;
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => { setSession(data.session); setLoading(false); }).catch(() => setLoading(false));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => { setSession(next); setLoading(false); });
+    return () => listener.subscription.unsubscribe();
+  }, []);
+  return <SafeAreaProvider>{loading ? <View style={{ flex: 1, backgroundColor: '#090a09', justifyContent: 'center', alignItems: 'center' }}><Text style={{ color: '#dfb578' }}>Yükleniyor...</Text></View> : session ? <Home key={session.user.id} session={session} /> : <AuthScreen />}</SafeAreaProvider>;
 }
 
 const accent = '#dfb578';
