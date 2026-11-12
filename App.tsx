@@ -382,6 +382,144 @@ function BarBackground({ target, bottom = false }: { target: NonNullable<Compone
   );
 }
 
+
+type ProfilePage = 'profile' | 'settings' | 'detail';
+function ProfileScreen({ onClose, bottomPadding }: { onClose: () => void; bottomPadding: number }) {
+  const [page, setPage] = useState<ProfilePage>('profile');
+  const [detail, setDetail] = useState('');
+  const [name, setName] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [kidsMode, setKidsMode] = useState(false);
+  const [goal, setGoal] = useState(20);
+  const [notifications, setNotifications] = useState(true);
+  const [language, setLanguage] = useState('Türkçe');
+  const openDetail = (title: string) => { setDetail(title); setPage('detail'); };
+  const back = () => {
+    if (page === 'detail') setPage('settings');
+    else if (page === 'settings') setPage('profile');
+    else onClose();
+  };
+  const item = (title: string, icon: IconName, action: () => void, last = false) => (
+    <Pressable key={title} accessibilityRole="button" onPress={action} style={({ pressed }) => [profileStyles.item, !last && profileStyles.itemBorder, pressed && styles.pressed]}>
+      <Feather name={icon} size={20} color="#d9d4ca" />
+      <Text style={profileStyles.itemText}>{title}</Text>
+      <Feather name="chevron-right" size={19} color="#8e8c85" />
+    </Pressable>
+  );
+  return (
+    <View style={profileStyles.root}>
+      <View style={profileStyles.top}>
+        <Pressable onPress={back} accessibilityRole="button" accessibilityLabel="Geri" style={profileStyles.roundButton}>
+          <Feather name="arrow-left" size={21} color="#f2eee6" />
+        </Pressable>
+        <Text style={profileStyles.title}>{page === 'profile' ? 'Profilim' : page === 'settings' ? 'Ayarlar' : detail}</Text>
+        {page === 'profile' ? (
+          <Pressable onPress={() => setPage('settings')} accessibilityRole="button" accessibilityLabel="Ayarları aç" style={profileStyles.roundButton}>
+            <Feather name="settings" size={21} color="#f2eee6" />
+          </Pressable>
+        ) : <View style={profileStyles.roundButtonPlaceholder} />}
+      </View>
+      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: bottomPadding + 32 }}>
+        {page === 'profile' ? (
+          <>
+            <View style={profileStyles.identity}>
+              <View style={profileStyles.avatar}><Feather name="user" size={55} color="#e7e0d3" /></View>
+              <Text style={profileStyles.greeting}>{name ? 'Merhaba, ' + name : 'Merhaba!'}</Text>
+              <Text style={profileStyles.subtle}>Dinleme yolculuğun burada.</Text>
+              {editing ? (
+                <View style={profileStyles.editRow}>
+                  <TextInput value={name} onChangeText={setName} autoFocus placeholder="Adın" placeholderTextColor="#777" style={profileStyles.nameInput} maxLength={40} />
+                  <Pressable onPress={() => setEditing(false)} style={profileStyles.editButton}><Text style={profileStyles.editText}>Kaydet</Text></Pressable>
+                </View>
+              ) : (
+                <Pressable onPress={() => setEditing(true)} style={profileStyles.nameButton}>
+                  <Feather name="edit-2" size={14} color={accent} /><Text style={profileStyles.nameText}>{name ? 'Adını düzenle' : 'Adını ekle'}</Text>
+                </Pressable>
+              )}
+            </View>
+            <Text style={profileStyles.sectionLabel}>SANA ÖZEL</Text>
+            <View style={profileStyles.group}>
+              {item('Yorumlarım', 'star', () => openDetail('Yorumlarım'))}
+              {item('Dinleme hedefim', 'target', () => openDetail('Dinleme hedefim'))}
+              {item('Dinleme geçmişim', 'clock', () => openDetail('Dinleme geçmişim'), true)}
+            </View>
+            <Text style={profileStyles.sectionLabel}>DENEYİM</Text>
+            <View style={profileStyles.group}>
+              <View style={profileStyles.item}><Feather name="smile" size={20} color="#d9d4ca" /><Text style={profileStyles.itemText}>Çocuk modu</Text><Pressable accessibilityRole="switch" accessibilityState={{ checked: kidsMode }} onPress={() => setKidsMode(!kidsMode)} style={[profileStyles.switchTrack, kidsMode && profileStyles.switchOn]}><View style={[profileStyles.switchThumb, kidsMode && profileStyles.thumbOn]} /></Pressable></View>
+            </View>
+            <View style={profileStyles.note}><Feather name="headphones" size={22} color={accent} /><View style={{ flex: 1 }}><Text style={profileStyles.noteTitle}>İyi hikâyeler paylaşılır.</Text><Text style={profileStyles.subtle}>Sevdiğin kitapları arkadaşlarına öner.</Text></View></View>
+          </>
+        ) : page === 'settings' ? (
+          <>
+            <Text style={profileStyles.sectionLabel}>HESAP</Text>
+            <View style={profileStyles.group}>
+              {item('Hesap bilgileri', 'user', () => openDetail('Hesap bilgileri'))}
+              {item('Abonelik', 'credit-card', () => openDetail('Abonelik'))}
+              {item('Gizlilik', 'shield', () => openDetail('Gizlilik'), true)}
+            </View>
+            <Text style={profileStyles.sectionLabel}>UYGULAMA</Text>
+            <View style={profileStyles.group}>
+              {item('Bildirimler', 'bell', () => openDetail('Bildirimler'))}
+              {item('Dil tercihi', 'globe', () => openDetail('Dil tercihi'))}
+              {item('Dinleme hedefim', 'target', () => openDetail('Dinleme hedefim'), true)}
+            </View>
+            <Text style={profileStyles.sectionLabel}>DESTEK</Text>
+            <View style={profileStyles.group}>
+              {item('Yardım merkezi', 'help-circle', () => openDetail('Yardım merkezi'))}
+              {item('Kullanım koşulları', 'file-text', () => openDetail('Kullanım koşulları'), true)}
+            </View>
+            <Text style={profileStyles.footnote}>Uygulama ayarları</Text>
+          </>
+        ) : (
+          <View style={profileStyles.detailContent}>
+            {detail === 'Dinleme hedefim' ? (
+              <><Text style={profileStyles.detailTitle}>Günlük hedefin: {goal} dakika</Text><View style={profileStyles.goalRow}>{[10,20,30,45,60].map(v => <Pressable key={v} onPress={() => setGoal(v)} style={[profileStyles.goalPill, goal === v && profileStyles.goalSelected]}><Text style={profileStyles.nameText}>{v} dk</Text></Pressable>)}</View></>
+            ) : detail === 'Bildirimler' ? (
+              <Pressable onPress={() => setNotifications(!notifications)} style={profileStyles.item}><Text style={profileStyles.itemText}>Bildirimler</Text><Text style={profileStyles.nameText}>{notifications ? 'Açık' : 'Kapalı'}</Text></Pressable>
+            ) : detail === 'Dil tercihi' ? (
+              <Pressable onPress={() => setLanguage(language === 'Türkçe' ? 'English' : 'Türkçe')} style={profileStyles.item}><Text style={profileStyles.itemText}>Uygulama dili</Text><Text style={profileStyles.nameText}>{language}</Text></Pressable>
+            ) : <><Feather name="book-open" size={34} color={accent} /><Text style={profileStyles.detailTitle}>{detail}</Text><Text style={profileStyles.subtle}>Bu bölüm yakında kullanıma açılacak.</Text></>}
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+const profileStyles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#090a09' },
+  top: { height: 68, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  title: { fontSize: 19, fontWeight: '700', color: '#f4f0e8' },
+  roundButton: { width: 43, height: 43, borderRadius: 22, borderWidth: 1, borderColor: '#383732', backgroundColor: '#1a1b19', justifyContent: 'center', alignItems: 'center' },
+  roundButtonPlaceholder: { width: 43 },
+  identity: { alignItems: 'center', paddingTop: 30, paddingBottom: 40 },
+  avatar: { width: 116, height: 116, borderRadius: 58, backgroundColor: '#242622', borderWidth: 1, borderColor: '#414039', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
+  greeting: { fontFamily: serif, color: '#f4f0e8', fontSize: 30, fontWeight: '600' },
+  subtle: { color: '#98978f', fontSize: 13, marginTop: 7 },
+  nameButton: { marginTop: 18, borderWidth: 1, borderColor: '#796244', borderRadius: 25, paddingHorizontal: 19, paddingVertical: 11, flexDirection: 'row', gap: 9, alignItems: 'center' },
+  nameText: { color: '#e7d1ac', fontSize: 13, fontWeight: '600' },
+  editRow: { flexDirection: 'row', marginTop: 18, gap: 8, alignItems: 'center' },
+  nameInput: { width: 165, borderRadius: 12, backgroundColor: '#242622', color: '#fff', paddingHorizontal: 12, paddingVertical: 10 },
+  editButton: { backgroundColor: '#53422f', borderRadius: 12, padding: 12 },
+  editText: { color: '#fff', fontWeight: '600' },
+  sectionLabel: { color: '#99968d', fontSize: 11, letterSpacing: 1.7, marginHorizontal: 24, marginBottom: 12, marginTop: 12 },
+  group: { marginHorizontal: 18, marginBottom: 25, borderWidth: 1, borderColor: '#292b28', backgroundColor: '#151715', borderRadius: 18, overflow: 'hidden' },
+  item: { flexDirection: 'row', minHeight: 60, paddingHorizontal: 18, alignItems: 'center', gap: 16 },
+  itemBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#393b36' },
+  itemText: { flex: 1, fontSize: 15, fontWeight: '500', color: '#e9e7e1' },
+  switchTrack: { width: 47, height: 28, borderRadius: 15, backgroundColor: '#4c4d49', padding: 3, justifyContent: 'center' },
+  switchOn: { backgroundColor: '#a67b47' },
+  switchThumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#f6f2e9' },
+  thumbOn: { alignSelf: 'flex-end' },
+  note: { marginHorizontal: 18, marginTop: 4, padding: 19, backgroundColor: '#191a17', borderRadius: 18, flexDirection: 'row', alignItems: 'center', gap: 16, borderWidth: 1, borderColor: '#30302b' },
+  noteTitle: { color: '#f0ebe2', fontSize: 15, fontWeight: '600' },
+  footnote: { color: '#696a64', textAlign: 'center', fontSize: 12, marginTop: 12 },
+  detailContent: { padding: 24, gap: 18, alignItems: 'flex-start' },
+  detailTitle: { color: '#f1eee7', fontSize: 21, fontWeight: '600' },
+  goalRow: { flexDirection: 'row', gap: 7, flexWrap: 'wrap' },
+  goalPill: { padding: 12, borderRadius: 13, backgroundColor: '#252723' },
+  goalSelected: { borderWidth: 1, borderColor: accent },
+});
+
 function Home() {
   const insets = useSafeAreaInsets();
   const backdrop = useRef<ComponentRef<typeof BlurTargetView>>(null);
@@ -426,6 +564,7 @@ function Home() {
 
   function openTab(tab: Tab) {
     if (tab !== 'profile') {
+      setShowProfile(false);
       setActiveTab(tab);
       return;
     }
@@ -436,7 +575,9 @@ function Home() {
     <View style={styles.screen}>
       <StatusBar style="light" />
       <BlurTargetView ref={backdrop} style={styles.backdrop}>
-        {activeTab === 'library' ? (
+        {showProfile ? (
+          <View style={{ flex: 1, paddingTop: insets.top }}><ProfileScreen onClose={() => setShowProfile(false)} bottomPadding={100 + insets.bottom} /></View>
+        ) : activeTab === 'library' ? (
           <View style={[styles.searchScreen, { paddingTop: insets.top + 58 }]}>
             {libraryError && <Text style={styles.libraryWarning}>Kitaplık değişiklikleri bu oturumda cihaza kaydedilemiyor.</Text>}
             {library && <LibraryScreen data={library} bottomPadding={94 + insets.bottom} onCreate={createList} onOpen={setSelected} />}
@@ -472,42 +613,42 @@ function Home() {
           </ScrollView>
         )}
       </BlurTargetView>
-      <View style={[styles.headerBar, { paddingTop: insets.top }]}>
+      {!showProfile && <View style={[styles.headerBar, { paddingTop: insets.top }]}>
         <BarBackground target={backdrop} />
         <View style={styles.header}>
           {activeTab === 'home' && <Ionicons name="headset-outline" size={25} color={accent} />}
           <Text accessibilityRole="header" style={styles.brand}>{activeTab === 'home' ? 'Sesli Kitap' : tabs.find((tab) => tab.id === activeTab)?.label}</Text>
         </View>
-      </View>
+      </View>}
       <View style={[styles.nav, { bottom: Math.max(insets.bottom, 12) }]}>
         <BarBackground target={backdrop} bottom />
         {tabs.map((tab) => (
           <Pressable
             key={tab.id}
             accessibilityRole="tab"
-            accessibilityState={{ selected: tab.id === activeTab }}
+            accessibilityState={{ selected: tab.id === 'profile' ? showProfile : !showProfile && tab.id === activeTab }}
             onPress={() => openTab(tab.id)}
-            style={({ pressed }) => [styles.tab, tab.id === activeTab && styles.activeTab, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.tab, (tab.id === 'profile' ? showProfile : !showProfile && tab.id === activeTab) && styles.activeTab, pressed && styles.pressed]}
           >
-            <Feather name={tab.icon} size={21} color={tab.id === activeTab ? '#fff' : '#b3b1ab'} />
+            <Feather name={tab.icon} size={21} color={(tab.id === 'profile' ? showProfile : !showProfile && tab.id === activeTab) ? '#fff' : '#b3b1ab'} />
             <Text style={[styles.tabText, tab.id === activeTab && styles.activeTabText]} numberOfLines={1}>{tab.label}</Text>
           </Pressable>
         ))}
       </View>
       <Modal
-        visible={selected !== null || showProfile}
+        visible={selected !== null}
         transparent
         animationType="fade"
-        onRequestClose={() => { setSelected(null); setShowProfile(false); }}
+        onRequestClose={() => setSelected(null)}
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalBody} accessibilityViewIsModal>
             <Text style={styles.modalTitle} accessibilityRole="header">
-              {selected?.title ?? 'Profil'}
+              {selected?.title ?? ''}
             </Text>
             {selected && <Text style={styles.featureMeta}>{selected.author} · {selected.genre}</Text>}
             <Text style={styles.modalCopy}>
-              {selected ? 'Ses kaydı henüz eklenmedi.' : 'Bu bölüm henüz hazır değil.'}
+              Ses kaydı henüz eklenmedi.
             </Text>
             {selected && library && (
               <>
@@ -532,7 +673,7 @@ function Home() {
             )}
             <Pressable
               accessibilityRole="button"
-              onPress={() => { setSelected(null); setShowProfile(false); }}
+              onPress={() => setSelected(null)}
               style={({ pressed }) => [styles.listen, pressed && styles.pressed]}
             >
               <Text style={styles.listenText}>Kapat</Text>
