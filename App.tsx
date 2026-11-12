@@ -1,8 +1,9 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { BlurTargetView, BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
-import { useRef, useState, type ComponentProps, type ComponentRef } from 'react';
+import { useEffect, useRef, useState, type ComponentProps, type ComponentRef } from 'react';
 import {
   Modal,
   Platform,
@@ -47,7 +48,10 @@ const classics: Book[] = [
 
 type IconName = ComponentProps<typeof Feather>['name'];
 type Tab = 'home' | 'search' | 'library' | 'profile';
-type PlaceholderTab = 'library' | 'profile';
+type LibraryList = { id: string; name: string; books: string[] };
+type LibraryData = { saved: string[]; lists: LibraryList[] };
+const libraryKey = 'sesli-kitap:library:v1';
+const emptyLibrary: LibraryData = { saved: [], lists: [] };
 const tabs: { id: Tab; label: string; icon: IconName }[] = [
   { id: 'home', label: 'Ana Sayfa', icon: 'home' },
   { id: 'search', label: 'Ara', icon: 'search' },
@@ -217,6 +221,152 @@ function SearchScreen({ bottomPadding, onOpen }: { bottomPadding: number; onOpen
   );
 }
 
+const librarySections: { id: string; title: string; icon: IconName; color: string; empty: string }[] = [
+  { id: 'saved', title: 'Sonra Dinle', icon: 'bookmark', color: '#2c3c33', empty: 'Bir kitabın ayrıntılarından Sonra Dinle’ye ekleyebilirsin.' },
+  { id: 'history', title: 'Dinlediklerim', icon: 'clock', color: '#44342a', empty: 'Dinleme geçmişin burada görünecek.' },
+  { id: 'downloads', title: 'İndirdiklerim', icon: 'download', color: '#2b3642', empty: 'İndirilen kitaplar burada görünecek.' },
+];
+
+function LibraryScreen({ data, bottomPadding, onCreate, onOpen }: {
+  data: LibraryData;
+  bottomPadding: number;
+  onCreate: (name: string) => void;
+  onOpen: (book: Book) => void;
+}) {
+  const [collection, setCollection] = useState<string | null>(null);
+  const [grid, setGrid] = useState(false);
+  const [newestFirst, setNewestFirst] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState('');
+  const section = librarySections.find((item) => item.id === collection);
+  const list = data.lists.find((item) => item.id === collection);
+  const bookIds = collection === 'saved' ? data.saved : list?.books ?? [];
+  const books = catalogue.filter((book) => bookIds.includes(book.id));
+  const lists = newestFirst ? [...data.lists].reverse() : data.lists;
+
+  function createList() {
+    if (!name.trim()) return;
+    onCreate(name.trim());
+    setName('');
+    setCreating(false);
+  }
+
+  return (
+    <ScrollView
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={[styles.libraryContent, { paddingBottom: bottomPadding }]}
+    >
+      {collection ? (
+        <>
+          <Pressable accessibilityRole="button" onPress={() => setCollection(null)} style={styles.libraryBack}>
+            <Feather name="arrow-left" size={19} color={accent} />
+            <Text style={styles.libraryAction}>Kitaplığım</Text>
+          </Pressable>
+          <Text accessibilityRole="header" style={styles.searchHeading}>{section?.title ?? list?.name}</Text>
+          {books.length === 0 && <Text style={styles.noResults}>{section?.empty ?? 'Kitap ayrıntılarından bu listeye kitap ekleyebilirsin.'}</Text>}
+          {books.map((book) => (
+            <Pressable key={book.id} accessibilityRole="button" onPress={() => onOpen(book)} style={styles.resultRow}>
+              <View style={[styles.resultCover, { backgroundColor: book.paper }]}>
+                <Text style={[styles.resultMark, { color: book.ink }]}>{book.mark}</Text>
+              </View>
+              <View style={styles.resultInfo}>
+                <Text style={styles.resultTitle}>{book.title}</Text>
+                <Text style={styles.resultAuthor}>{book.author}</Text>
+              </View>
+              <Feather name="chevron-right" size={20} color="#aaa8a0" />
+            </Pressable>
+          ))}
+        </>
+      ) : (
+        <>
+          <View style={styles.libraryGrid}>
+            {librarySections.map((item) => (
+              <Pressable
+                key={item.id}
+                accessibilityRole="button"
+                onPress={() => setCollection(item.id)}
+                style={({ pressed }) => [styles.libraryCard, item.id === 'downloads' && styles.wideLibraryCard, { backgroundColor: item.color }, pressed && styles.pressed]}
+              >
+                <Feather name={item.icon} size={22} color="#eee8db" />
+                <View style={styles.libraryCardCopy}>
+                  <Text style={styles.libraryCardTitle}>{item.title}</Text>
+                  <Text style={styles.libraryCount}>{item.id === 'saved' ? data.saved.length : 0} kitap</Text>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+          <View style={styles.libraryDivider} />
+          <Text accessibilityRole="header" style={styles.searchHeading}>Listeler</Text>
+          <View style={styles.listControls}>
+            <View style={styles.layoutControls}>
+              {(['list', 'grid'] as const).map((mode) => {
+                const active = grid === (mode === 'grid');
+                return (
+                  <Pressable
+                    key={mode}
+                    accessibilityRole="button"
+                    accessibilityLabel={mode === 'list' ? 'Liste görünümü' : 'Izgara görünümü'}
+                    accessibilityState={{ selected: active }}
+                    onPress={() => setGrid(mode === 'grid')}
+                    style={[styles.layoutButton, active && styles.layoutActive]}
+                  >
+                    <Feather name={mode} size={20} color={active ? accent : '#aaa8a0'} />
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Pressable accessibilityRole="button" accessibilityHint="Sıralama yönünü değiştirir" onPress={() => setNewestFirst(!newestFirst)} style={styles.sortButton}>
+              <Text style={styles.libraryCount}>{newestFirst ? 'Yeniden eskiye' : 'Eskiden yeniye'}</Text>
+              <Feather name={newestFirst ? 'arrow-down' : 'arrow-up'} size={16} color={accent} />
+            </Pressable>
+          </View>
+          {creating ? (
+            <View style={styles.newListForm}>
+              <TextInput
+                autoFocus
+                value={name}
+                onChangeText={setName}
+                onSubmitEditing={createList}
+                accessibilityLabel="Liste adı"
+                placeholder="Liste adı"
+                placeholderTextColor="#aaa8a0"
+                keyboardAppearance="dark"
+                returnKeyType="done"
+                maxLength={60}
+                style={styles.newListInput}
+              />
+              <Pressable accessibilityRole="button" accessibilityLabel="Listeyi kaydet" disabled={!name.trim()} onPress={createList} style={[styles.layoutButton, !name.trim() && styles.pressed]}>
+                <Feather name="check" size={21} color={accent} />
+              </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Vazgeç" onPress={() => { setCreating(false); setName(''); }} style={styles.layoutButton}>
+                <Feather name="x" size={20} color="#aaa8a0" />
+              </Pressable>
+            </View>
+          ) : (
+            <Pressable accessibilityRole="button" onPress={() => setCreating(true)} style={styles.newListButton}>
+              <View style={styles.newListIcon}><Feather name="plus" size={22} color={accent} /></View>
+              <Text style={styles.resultTitle}>Yeni Liste Oluştur</Text>
+            </Pressable>
+          )}
+          <View style={grid ? styles.libraryGrid : undefined}>
+            {lists.map((item) => (
+              <Pressable key={item.id} accessibilityRole="button" onPress={() => setCollection(item.id)} style={grid ? [styles.libraryCard, styles.listGridCard] : styles.resultRow}>
+                <Feather name="list" size={20} color={accent} />
+                <View style={styles.libraryCardCopy}>
+                  <Text style={styles.resultTitle} numberOfLines={2}>{item.name}</Text>
+                  <Text style={styles.libraryCount}>{item.books.length} kitap</Text>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        </>
+      )}
+    </ScrollView>
+  );
+}
+
 function BarBackground({ target, bottom = false }: { target: NonNullable<ComponentProps<typeof BlurView>["blurTarget"]>; bottom?: boolean }) {
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
@@ -236,22 +386,62 @@ function Home() {
   const insets = useSafeAreaInsets();
   const backdrop = useRef<ComponentRef<typeof BlurTargetView>>(null);
   const [selected, setSelected] = useState<Book | null>(null);
-  const [section, setSection] = useState<PlaceholderTab | null>(null);
-  const [activeTab, setActiveTab] = useState<'home' | 'search'>('home');
+  const [showProfile, setShowProfile] = useState(false);
+  const [activeTab, setActiveTab] = useState<Exclude<Tab, 'profile'>>('home');
+  const [library, setLibrary] = useState<LibraryData | null>(null);
+  const [libraryError, setLibraryError] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem(libraryKey)
+      .then((value) => setLibrary(value ? JSON.parse(value) as LibraryData : emptyLibrary))
+      .catch(() => { setLibrary(emptyLibrary); setLibraryError(true); });
+  }, []);
+
+  useEffect(() => {
+    if (library === null || libraryError) return;
+    AsyncStorage.setItem(libraryKey, JSON.stringify(library)).catch(() => setLibraryError(true));
+  }, [library, libraryError]);
+
+  function toggleSaved(id: string) {
+    setLibrary((current) => current && {
+      ...current,
+      saved: current.saved.includes(id) ? current.saved.filter((bookId) => bookId !== id) : [...current.saved, id],
+    });
+  }
+
+  function createList(name: string) {
+    const id = Date.now().toString(36);
+    setLibrary((current) => current && { ...current, lists: [...current.lists, { id, name, books: [] }] });
+  }
+
+  function toggleListBook(listId: string, bookId: string) {
+    setLibrary((current) => current && {
+      ...current,
+      lists: current.lists.map((list) => list.id !== listId ? list : {
+        ...list,
+        books: list.books.includes(bookId) ? list.books.filter((id) => id !== bookId) : [...list.books, bookId],
+      }),
+    });
+  }
 
   function openTab(tab: Tab) {
-    if (tab === 'home' || tab === 'search') {
+    if (tab !== 'profile') {
       setActiveTab(tab);
       return;
     }
-    setSection(tab);
+    setShowProfile(true);
   }
 
   return (
     <View style={styles.screen}>
       <StatusBar style="light" />
       <BlurTargetView ref={backdrop} style={styles.backdrop}>
-        {activeTab === 'search' ? (
+        {activeTab === 'library' ? (
+          <View style={[styles.searchScreen, { paddingTop: insets.top + 58 }]}>
+            {libraryError && <Text style={styles.libraryWarning}>Kitaplık değişiklikleri bu oturumda cihaza kaydedilemiyor.</Text>}
+            {library && <LibraryScreen data={library} bottomPadding={94 + insets.bottom} onCreate={createList} onOpen={setSelected} />}
+          </View>
+        ) : activeTab === 'search' ? (
           <View style={[styles.searchScreen, { paddingTop: insets.top + 58 }]}>
             <SearchScreen bottomPadding={94 + insets.bottom} onOpen={setSelected} />
           </View>
@@ -286,7 +476,7 @@ function Home() {
         <BarBackground target={backdrop} />
         <View style={styles.header}>
           {activeTab === 'home' && <Ionicons name="headset-outline" size={25} color={accent} />}
-          <Text accessibilityRole="header" style={styles.brand}>{activeTab === 'home' ? 'Sesli Kitap' : 'Ara'}</Text>
+          <Text accessibilityRole="header" style={styles.brand}>{activeTab === 'home' ? 'Sesli Kitap' : tabs.find((tab) => tab.id === activeTab)?.label}</Text>
         </View>
       </View>
       <View style={[styles.nav, { bottom: Math.max(insets.bottom, 12) }]}>
@@ -305,23 +495,44 @@ function Home() {
         ))}
       </View>
       <Modal
-        visible={selected !== null || section !== null}
+        visible={selected !== null || showProfile}
         transparent
         animationType="fade"
-        onRequestClose={() => { setSelected(null); setSection(null); }}
+        onRequestClose={() => { setSelected(null); setShowProfile(false); }}
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalBody} accessibilityViewIsModal>
             <Text style={styles.modalTitle} accessibilityRole="header">
-              {selected?.title ?? tabs.find((tab) => tab.id === section)?.label}
+              {selected?.title ?? 'Profil'}
             </Text>
             {selected && <Text style={styles.featureMeta}>{selected.author} · {selected.genre}</Text>}
             <Text style={styles.modalCopy}>
               {selected ? 'Ses kaydı henüz eklenmedi.' : 'Bu bölüm henüz hazır değil.'}
             </Text>
+            {selected && library && (
+              <>
+                <Pressable accessibilityRole="button" onPress={() => toggleSaved(selected.id)} style={styles.libraryBack}>
+                  <Feather name="bookmark" size={18} color={accent} />
+                  <Text style={styles.libraryAction}>{library.saved.includes(selected.id) ? 'Sonra Dinle’den Kaldır' : 'Sonra Dinle’ye Ekle'}</Text>
+                </Pressable>
+                {library.lists.length > 0 && (
+                  <ScrollView style={styles.modalLists} keyboardShouldPersistTaps="handled">
+                    {library.lists.map((list) => {
+                      const included = list.books.includes(selected.id);
+                      return (
+                        <Pressable key={list.id} accessibilityRole="checkbox" accessibilityState={{ checked: included }} onPress={() => toggleListBook(list.id, selected.id)} style={styles.libraryBack}>
+                          <Feather name={included ? 'check-square' : 'square'} size={17} color={accent} />
+                          <Text style={styles.libraryAction}>{list.name}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                )}
+              </>
+            )}
             <Pressable
               accessibilityRole="button"
-              onPress={() => { setSelected(null); setSection(null); }}
+              onPress={() => { setSelected(null); setShowProfile(false); }}
               style={({ pressed }) => [styles.listen, pressed && styles.pressed]}
             >
               <Text style={styles.listenText}>Kapat</Text>
@@ -343,6 +554,28 @@ const serif = Platform.select({ ios: 'Georgia', android: 'serif', default: 'seri
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#000' },
   backdrop: { flex: 1 },
+  libraryContent: { paddingHorizontal: 20, paddingTop: 12 },
+  libraryGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 10 },
+  libraryCard: { width: '48.5%', minHeight: 103, borderRadius: 9, padding: 13, gap: 10, justifyContent: 'space-between' },
+  wideLibraryCard: { width: '100%', flexDirection: 'row', alignItems: 'center', minHeight: 68, justifyContent: 'flex-start' },
+  libraryCardCopy: { gap: 4, flexShrink: 1 },
+  libraryCardTitle: { color: '#f7f6f3', fontSize: 16, fontWeight: '700' },
+  libraryCount: { color: '#d4cec1', fontSize: 12 },
+  libraryDivider: { height: StyleSheet.hairlineWidth, backgroundColor: '#3a3731', marginTop: 24, marginBottom: 17 },
+  listControls: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 5, marginBottom: 7 },
+  layoutControls: { flexDirection: 'row', gap: 4 },
+  layoutButton: { width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  layoutActive: { borderBottomWidth: 2, borderBottomColor: '#dfb578' },
+  sortButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  newListButton: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 58, marginBottom: 8 },
+  newListIcon: { width: 46, height: 46, borderRadius: 7, backgroundColor: '#302820', alignItems: 'center', justifyContent: 'center' },
+  newListForm: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, backgroundColor: '#242522', borderRadius: 8 },
+  newListInput: { flex: 1, minHeight: 48, paddingHorizontal: 12, color: '#f7f6f3', fontSize: 15 },
+  listGridCard: { minHeight: 88, backgroundColor: '#242522' },
+  libraryBack: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 },
+  libraryAction: { color: '#dfb578', fontSize: 14, fontWeight: '600', flexShrink: 1 },
+  libraryWarning: { color: '#dfb578', paddingHorizontal: 20, paddingVertical: 8 },
+  modalLists: { alignSelf: 'stretch', maxHeight: 132 },
   searchScreen: { flex: 1, backgroundColor: '#000' },
   searchField: { marginHorizontal: 20, marginTop: 4, marginBottom: 10, paddingLeft: 14, paddingRight: 6, minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 10, backgroundColor: '#242522' },
   searchInput: { flex: 1, paddingVertical: 12, paddingRight: 6, color: '#f7f6f3', fontSize: 16 },
