@@ -8,6 +8,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState, type ComponentProps, type ComponentRef } from 'react';
 import {
   Modal,
+  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -28,6 +29,7 @@ type Book = {
   ink: string;
   mark: string;
   progress?: number;
+  coverUrl?: string;
 };
 
 const featured: Book = {
@@ -62,6 +64,7 @@ const tabs: { id: Tab; label: string; icon: IconName }[] = [
 ];
 
 function BookCover({ book, large = false }: { book: Book; large?: boolean }) {
+  if (book.coverUrl) return <Image source={{uri:book.coverUrl}} style={{width:'100%',height:'100%'}} resizeMode="cover" />;
   return (
     <View style={[styles.cover, { backgroundColor: book.paper }]} accessible={false}>
       <View style={[styles.coverBorder, { borderColor: book.ink + '68' }]}>
@@ -663,6 +666,8 @@ function Home({ session }: { session: Session }) {
   const backdrop = useRef<ComponentRef<typeof BlurTargetView>>(null);
   const [selected, setSelected] = useState<Book | null>(null);
   const [lastOpened, setLastOpened] = useState<Book | null>(null);
+  const [remoteBooks,setRemoteBooks] = useState<Book[]>([]);
+  useEffect(()=>{supabase.from('books').select('id,title,author,genre,cover_path').eq('published',true).then(({data})=>{if(data)setRemoteBooks(data.map(b=>({id:b.id,title:b.title,author:b.author,genre:b.genre,paper:'#333e38',ink:'#f0e5d2',mark:b.title.slice(0,2).toUpperCase(),coverUrl:b.cover_path?supabase.storage.from('book-covers').getPublicUrl(b.cover_path).data.publicUrl:undefined})));});},[]);
   const [showProfile, setShowProfile] = useState(false);
   const [isAdmin,setIsAdmin] = useState(false);
   const [showAdmin,setShowAdmin] = useState(false);
@@ -773,6 +778,7 @@ function Home({ session }: { session: Session }) {
               </View>
             </View>
             <Shelf title="Dinlemeye Devam Et" books={continuing} onOpen={openBook} />
+            {remoteBooks.length>0 && <Shelf title="Yeni Eklenenler" books={remoteBooks} onOpen={openBook} />}
             <Shelf title="Klasikler" books={classics} onOpen={openBook} />
           </ScrollView>
         )}
