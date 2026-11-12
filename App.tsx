@@ -440,10 +440,6 @@ function ProfileScreen({ onClose, bottomPadding }: { onClose: () => void; bottom
               {item('Yorumlarım', 'star', () => openDetail('Yorumlarım'))}
               {item('Dinleme geçmişim', 'clock', () => openDetail('Dinleme geçmişim'), true)}
             </View>
-            <Text style={profileStyles.sectionLabel}>DENEYİM</Text>
-            <View style={profileStyles.group}>
-              <View style={profileStyles.item}><Feather name="smile" size={20} color="#d9d4ca" /><Text style={profileStyles.itemText}>Çocuk modu</Text><Pressable accessibilityRole="switch" accessibilityState={{ checked: kidsMode }} onPress={() => setKidsMode(!kidsMode)} style={[profileStyles.switchTrack, kidsMode && profileStyles.switchOn]}><View style={[profileStyles.switchThumb, kidsMode && profileStyles.thumbOn]} /></Pressable></View>
-            </View>
             <View style={profileStyles.note}><Feather name="headphones" size={22} color={accent} /><View style={{ flex: 1 }}><Text style={profileStyles.noteTitle}>İyi hikâyeler paylaşılır.</Text><Text style={profileStyles.subtle}>Sevdiğin kitapları arkadaşlarına öner.</Text></View></View>
           </>
         ) : page === 'settings' ? (
@@ -500,10 +496,6 @@ const profileStyles = StyleSheet.create({
   item: { flexDirection: 'row', minHeight: 60, paddingHorizontal: 18, alignItems: 'center', gap: 16 },
   itemBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#393b36' },
   itemText: { flex: 1, fontSize: 15, fontWeight: '500', color: '#e9e7e1' },
-  switchTrack: { width: 47, height: 28, borderRadius: 15, backgroundColor: '#4c4d49', padding: 3, justifyContent: 'center' },
-  switchOn: { backgroundColor: '#a67b47' },
-  switchThumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#f6f2e9' },
-  thumbOn: { alignSelf: 'flex-end' },
   note: { marginHorizontal: 18, marginTop: 4, padding: 19, backgroundColor: '#191a17', borderRadius: 18, flexDirection: 'row', alignItems: 'center', gap: 16, borderWidth: 1, borderColor: '#30302b' },
   noteTitle: { color: '#f0ebe2', fontSize: 15, fontWeight: '600' },
   footnote: { color: '#696a64', textAlign: 'center', fontSize: 12, marginTop: 12 },
