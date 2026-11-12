@@ -389,8 +389,6 @@ function ProfileScreen({ onClose, bottomPadding }: { onClose: () => void; bottom
   const [detail, setDetail] = useState('');
   const [name, setName] = useState('');
   const [editing, setEditing] = useState(false);
-  const [kidsMode, setKidsMode] = useState(false);
-  const [goal, setGoal] = useState(20);
   const [notifications, setNotifications] = useState(true);
   const [language, setLanguage] = useState('Türkçe');
   const openDetail = (title: string) => { setDetail(title); setPage('detail'); };
@@ -440,7 +438,6 @@ function ProfileScreen({ onClose, bottomPadding }: { onClose: () => void; bottom
             <Text style={profileStyles.sectionLabel}>SANA ÖZEL</Text>
             <View style={profileStyles.group}>
               {item('Yorumlarım', 'star', () => openDetail('Yorumlarım'))}
-              {item('Dinleme hedefim', 'target', () => openDetail('Dinleme hedefim'))}
               {item('Dinleme geçmişim', 'clock', () => openDetail('Dinleme geçmişim'), true)}
             </View>
             <Text style={profileStyles.sectionLabel}>DENEYİM</Text>
@@ -460,8 +457,7 @@ function ProfileScreen({ onClose, bottomPadding }: { onClose: () => void; bottom
             <Text style={profileStyles.sectionLabel}>UYGULAMA</Text>
             <View style={profileStyles.group}>
               {item('Bildirimler', 'bell', () => openDetail('Bildirimler'))}
-              {item('Dil tercihi', 'globe', () => openDetail('Dil tercihi'))}
-              {item('Dinleme hedefim', 'target', () => openDetail('Dinleme hedefim'), true)}
+              {item('Dil tercihi', 'globe', () => openDetail('Dil tercihi'), true)}
             </View>
             <Text style={profileStyles.sectionLabel}>DESTEK</Text>
             <View style={profileStyles.group}>
@@ -472,9 +468,7 @@ function ProfileScreen({ onClose, bottomPadding }: { onClose: () => void; bottom
           </>
         ) : (
           <View style={profileStyles.detailContent}>
-            {detail === 'Dinleme hedefim' ? (
-              <><Text style={profileStyles.detailTitle}>Günlük hedefin: {goal} dakika</Text><View style={profileStyles.goalRow}>{[10,20,30,45,60].map(v => <Pressable key={v} onPress={() => setGoal(v)} style={[profileStyles.goalPill, goal === v && profileStyles.goalSelected]}><Text style={profileStyles.nameText}>{v} dk</Text></Pressable>)}</View></>
-            ) : detail === 'Bildirimler' ? (
+            {detail === 'Bildirimler' ? (
               <Pressable onPress={() => setNotifications(!notifications)} style={profileStyles.item}><Text style={profileStyles.itemText}>Bildirimler</Text><Text style={profileStyles.nameText}>{notifications ? 'Açık' : 'Kapalı'}</Text></Pressable>
             ) : detail === 'Dil tercihi' ? (
               <Pressable onPress={() => setLanguage(language === 'Türkçe' ? 'English' : 'Türkçe')} style={profileStyles.item}><Text style={profileStyles.itemText}>Uygulama dili</Text><Text style={profileStyles.nameText}>{language}</Text></Pressable>
