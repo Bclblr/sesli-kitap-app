@@ -1,3 +1,4 @@
+import AdminScreen from './AdminScreen';
 import { supabase } from './supabase';
 import type { Session } from '@supabase/supabase-js';
 import { Feather, Ionicons } from '@expo/vector-icons';
@@ -386,7 +387,7 @@ function BarBackground({ target, bottom = false }: { target: NonNullable<Compone
 
 
 type ProfilePage = 'profile' | 'settings' | 'detail';
-function ProfileScreen({ onClose, bottomPadding, userId }: { onClose: () => void; bottomPadding: number; userId: string }) {
+function ProfileScreen({ onClose, bottomPadding, userId, isAdmin, onAdmin }: { onClose: () => void; bottomPadding: number; userId: string; isAdmin: boolean; onAdmin: () => void }) {
   const [page, setPage] = useState<ProfilePage>('profile');
   const [detail, setDetail] = useState('');
   const [name, setName] = useState('');
@@ -446,6 +447,7 @@ function ProfileScreen({ onClose, bottomPadding, userId }: { onClose: () => void
           </>
         ) : page === 'settings' ? (
           <>
+            {isAdmin && <View style={profileStyles.group}>{item('Yönetim paneli', 'sliders', onAdmin, true)}</View>}
             <Text style={profileStyles.sectionLabel}>HESAP</Text>
             <View style={profileStyles.group}>
               {item('Hesap bilgileri', 'user', () => openDetail('Hesap bilgileri'))}
@@ -662,6 +664,9 @@ function Home({ session }: { session: Session }) {
   const [selected, setSelected] = useState<Book | null>(null);
   const [lastOpened, setLastOpened] = useState<Book | null>(null);
   const [showProfile, setShowProfile] = useState(false);
+  const [isAdmin,setIsAdmin] = useState(false);
+  const [showAdmin,setShowAdmin] = useState(false);
+  useEffect(()=>{supabase.from('admins').select('user_id').eq('user_id',session.user.id).maybeSingle().then(({data})=>setIsAdmin(!!data));},[session.user.id]);
   const [activeTab, setActiveTab] = useState<Exclude<Tab, 'profile'>>('home');
   const [library, setLibrary] = useState<LibraryData | null>(null);
   const [libraryError, setLibraryError] = useState(false);
@@ -690,6 +695,7 @@ function Home({ session }: { session: Session }) {
   }, [library, dataLoaded, session.user.id]);
 
   function openBook(book: Book) {
+    if (/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(book.id)) supabase.from('book_events').insert({user_id:session.user.id,book_id:book.id,event_type:'open'}).then(()=>{});
     setLastOpened(book);
     setSelected(book);
     supabase.from('listening_activity').upsert({ user_id: session.user.id, book_id: book.id, updated_at: new Date().toISOString() }).then(({ error }) => { if (error) setLibraryError(true); });
@@ -730,8 +736,10 @@ function Home({ session }: { session: Session }) {
     <View style={styles.screen}>
       <StatusBar style="light" />
       <BlurTargetView ref={backdrop} style={styles.backdrop}>
-        {showProfile ? (
-          <View style={{ flex: 1, paddingTop: insets.top }}><ProfileScreen onClose={() => setShowProfile(false)} bottomPadding={100 + insets.bottom} userId={session.user.id} /></View>
+        {showAdmin ? (
+          <View style={{flex:1,paddingTop:insets.top}}><AdminScreen onClose={()=>setShowAdmin(false)}/></View>
+        ) : showProfile ? (
+          <View style={{ flex: 1, paddingTop: insets.top }}><ProfileScreen onClose={() => setShowProfile(false)} bottomPadding={100 + insets.bottom} userId={session.user.id} isAdmin={isAdmin} onAdmin={()=>setShowAdmin(true)} /></View>
         ) : activeTab === 'library' ? (
           <View style={[styles.searchScreen, { paddingTop: insets.top + 58 }]}>
             {libraryError && <Text style={styles.libraryWarning}>Kitaplık değişiklikleri bu oturumda cihaza kaydedilemiyor.</Text>}
