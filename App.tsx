@@ -1,6 +1,5 @@
 import { supabase } from './supabase';
 import type { Session } from '@supabase/supabase-js';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { BlurTargetView, BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -53,7 +52,6 @@ type Tab = 'home' | 'search' | 'library' | 'profile';
 type LibraryList = { id: string; name: string; books: string[] };
 type LibraryData = { saved: string[]; lists: LibraryList[] };
 const libraryKey = 'sesli-kitap:library:v1';
-const lastOpenedKey = 'sesli-kitap:last-opened:v1';
 const emptyLibrary: LibraryData = { saved: [], lists: [] };
 const tabs: { id: Tab; label: string; icon: IconName }[] = [
   { id: 'home', label: 'Ana Sayfa', icon: 'home' },
