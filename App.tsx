@@ -51,6 +51,7 @@ type Tab = 'home' | 'search' | 'library' | 'profile';
 type LibraryList = { id: string; name: string; books: string[] };
 type LibraryData = { saved: string[]; lists: LibraryList[] };
 const libraryKey = 'sesli-kitap:library:v1';
+const lastOpenedKey = 'sesli-kitap:last-opened:v1';
 const emptyLibrary: LibraryData = { saved: [], lists: [] };
 const tabs: { id: Tab; label: string; icon: IconName }[] = [
   { id: 'home', label: 'Ana Sayfa', icon: 'home' },
@@ -597,10 +598,23 @@ function Home() {
   const insets = useSafeAreaInsets();
   const backdrop = useRef<ComponentRef<typeof BlurTargetView>>(null);
   const [selected, setSelected] = useState<Book | null>(null);
+  const [lastOpened, setLastOpened] = useState<Book | null>(null);
   const [showProfile, setShowProfile] = useState(false);
   const [activeTab, setActiveTab] = useState<Exclude<Tab, 'profile'>>('home');
   const [library, setLibrary] = useState<LibraryData | null>(null);
   const [libraryError, setLibraryError] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem(lastOpenedKey).then((id) => {
+      if (id) setLastOpened(catalogue.find((book) => book.id === id) ?? null);
+    }).catch(() => {});
+  }, []);
+
+  function openBook(book: Book) {
+    setLastOpened(book);
+    setSelected(book);
+    AsyncStorage.setItem(lastOpenedKey, book.id).catch(() => {});
+  }
 
   useEffect(() => {
     AsyncStorage.getItem(libraryKey)
@@ -653,36 +667,37 @@ function Home() {
         ) : activeTab === 'library' ? (
           <View style={[styles.searchScreen, { paddingTop: insets.top + 58 }]}>
             {libraryError && <Text style={styles.libraryWarning}>Kitaplık değişiklikleri bu oturumda cihaza kaydedilemiyor.</Text>}
-            {library && <LibraryScreen data={library} bottomPadding={94 + insets.bottom} onCreate={createList} onOpen={setSelected} />}
+            {library && <LibraryScreen data={library} bottomPadding={94 + insets.bottom} onCreate={createList} onOpen={openBook} />}
           </View>
         ) : activeTab === 'search' ? (
           <View style={[styles.searchScreen, { paddingTop: insets.top + 58 }]}>
-            <SearchScreen bottomPadding={94 + insets.bottom} onOpen={setSelected} />
+            <SearchScreen bottomPadding={94 + insets.bottom} onOpen={openBook} />
           </View>
         ) : (
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 110 + insets.bottom }}>
             <View style={[styles.hero, { paddingTop: insets.top + 58 }]}>
               <LinearGradient
-                colors={['#34483f', '#24342d', '#111714', '#000000']}
+                colors={lastOpened ? [lastOpened.paper, lastOpened.paper, '#111714', '#000000'] : ['#34483f', '#24342d', '#111714', '#000000']}
                 locations={[0, 0.39, 0.73, 1]}
                 style={StyleSheet.absoluteFill}
               />
               <View style={styles.feature}>
-                <View style={styles.featureCover}><BookCover book={featured} large /></View>
-                <Text style={styles.featureTitle} accessibilityRole="header">{featured.title}</Text>
-                <Text style={styles.featureMeta}>{featured.author} · {featured.genre}</Text>
+                <View style={styles.featureCover}><BookCover book={lastOpened ?? featured} large /></View>
+                {lastOpened && <Text style={{ color: '#dfb578', fontSize: 11, fontWeight: '700', letterSpacing: 1.5, marginTop: 14 }}>SON AÇTIĞIN KİTAP</Text>}
+                <Text style={styles.featureTitle} accessibilityRole="header">{(lastOpened ?? featured).title}</Text>
+                <Text style={styles.featureMeta}>{(lastOpened ?? featured).author} · {(lastOpened ?? featured).genre}</Text>
                 <Pressable
                   accessibilityRole="button"
-                  onPress={() => setSelected(featured)}
+                  onPress={() => openBook(lastOpened ?? featured)}
                   style={({ pressed }) => [styles.listen, pressed && styles.pressed]}
                 >
                   <Ionicons name="play" size={16} color="#17130e" />
-                  <Text style={styles.listenText}>Dinle</Text>
+                  <Text style={styles.listenText}>{lastOpened ? 'Devam Et' : 'Dinle'}</Text>
                 </Pressable>
               </View>
             </View>
-            <Shelf title="Dinlemeye Devam Et" books={continuing} onOpen={setSelected} />
-            <Shelf title="Klasikler" books={classics} onOpen={setSelected} />
+            <Shelf title="Dinlemeye Devam Et" books={continuing} onOpen={openBook} />
+            <Shelf title="Klasikler" books={classics} onOpen={openBook} />
           </ScrollView>
         )}
       </BlurTargetView>
