@@ -506,6 +506,93 @@ const profileStyles = StyleSheet.create({
   goalSelected: { borderWidth: 1, borderColor: accent },
 });
 
+
+function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; onClose: () => void; saved: boolean; onToggleSaved: () => void }) {
+  const insets = useSafeAreaInsets();
+  const [speedIndex, setSpeedIndex] = useState(1);
+  const [sleepIndex, setSleepIndex] = useState(0);
+  const [showChapters, setShowChapters] = useState(false);
+  const [notice, setNotice] = useState('');
+  const speeds = [0.75, 1, 1.25, 1.5, 2];
+  const sleepOptions = ['Kapalı', '15 dk', '30 dk', '45 dk'];
+  const progress = book.progress ?? 0;
+  const unavailable = () => setNotice('Bu kitap için ses kaydı henüz eklenmedi.');
+  return (
+    <View style={playerStyles.root}>
+      <LinearGradient colors={[book.paper, book.paper + 'ee', '#161512', '#090a09']} locations={[0, 0.26, 0.67, 1]} style={StyleSheet.absoluteFill} />
+      <ScrollView contentContainerStyle={[playerStyles.content, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 26 }]} showsVerticalScrollIndicator={false}>
+        <View style={playerStyles.topRow}>
+          <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Dinleme ekranını kapat" style={playerStyles.circle}><Feather name="chevron-down" size={26} color="#f5f0e8" /></Pressable>
+          <Text style={playerStyles.topLabel}>ŞİMDİ DİNLENİYOR</Text>
+          <Pressable onPress={() => setNotice('Paylaşma özelliği yakında eklenecek.')} accessibilityRole="button" accessibilityLabel="Paylaş" style={playerStyles.circle}><Feather name="share-2" size={20} color="#f5f0e8" /></Pressable>
+        </View>
+        <View style={playerStyles.artArea}>
+          <View style={[playerStyles.artFrame, { shadowColor: book.paper }]}>
+            <BookCover book={book} large />
+          </View>
+        </View>
+        <View style={playerStyles.bookInfo}>
+          <Text style={playerStyles.bookTitle} numberOfLines={2}>{book.title}</Text>
+          <Text style={playerStyles.author}>{book.author}</Text>
+          <View style={playerStyles.bookActions}>
+            <Text style={playerStyles.chapter}>Bölüm 1</Text>
+            <View style={playerStyles.actionGroup}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Bölüm listesi" onPress={() => setShowChapters(!showChapters)} style={playerStyles.action}><Feather name="list" size={22} color="#f1ece3" /></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel={saved ? 'Kitaplıktan kaldır' : 'Kitaplığıma ekle'} onPress={onToggleSaved} style={playerStyles.action}><Feather name={saved ? 'bookmark' : 'bookmark'} size={22} color={saved ? accent : '#f1ece3'} /></Pressable>
+            </View>
+          </View>
+          {showChapters && <View style={playerStyles.chapterPanel}><Text style={playerStyles.chapterPanelTitle}>Bölümler</Text><Text style={playerStyles.chapterPanelText}>Bölüm 1 · Ses kaydı bekleniyor</Text></View>}
+        </View>
+        <View style={playerStyles.timeline}>
+          <View style={playerStyles.progressTrack}><View style={[playerStyles.progressFill, { width: `${progress}%` }]} /><View style={[playerStyles.progressDot, { left: `${progress}%` }]} /></View>
+          <View style={playerStyles.times}><Text style={playerStyles.timeText}>{progress ? `% ${progress} tamamlandı` : '00:00'}</Text><Text style={playerStyles.timeText}>Süre henüz bilinmiyor</Text></View>
+        </View>
+        <View style={playerStyles.controls}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Oynatma hızı" onPress={() => setSpeedIndex((speedIndex + 1) % speeds.length)} style={playerStyles.smallControl}><Text style={playerStyles.speed}>{speeds[speedIndex].toFixed(2).replace(/0$/, '').replace('.', ',')}×</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="15 saniye geri" onPress={unavailable} style={playerStyles.smallControl}><Feather name="rotate-ccw" size={28} color="#f3efe8" /><Text style={playerStyles.skipText}>15</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Oynat" onPress={unavailable} style={playerStyles.play}><Feather name="play" size={30} color="#171713" style={{ marginLeft: 4 }} /></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="15 saniye ileri" onPress={unavailable} style={playerStyles.smallControl}><Feather name="rotate-cw" size={28} color="#f3efe8" /><Text style={playerStyles.skipText}>15</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Uyku zamanlayıcısı" onPress={() => setSleepIndex((sleepIndex + 1) % sleepOptions.length)} style={playerStyles.smallControl}><Feather name="moon" size={24} color={sleepIndex ? accent : '#f3efe8'} /></Pressable>
+        </View>
+        <Text style={playerStyles.sleepLabel}>{sleepIndex ? `Uyku zamanlayıcısı: ${sleepOptions[sleepIndex]} (ses kaydı eklendiğinde kullanılabilir)` : ' '}</Text>
+        {!!notice && <Text accessibilityLiveRegion="polite" style={playerStyles.notice}>{notice}</Text>}
+      </ScrollView>
+    </View>
+  );
+}
+const playerStyles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#090a09' },
+  content: { flexGrow: 1, paddingHorizontal: 26 },
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  topLabel: { fontSize: 10, letterSpacing: 2.1, color: '#e4dfd6', fontWeight: '700' },
+  circle: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#ffffff16', borderWidth: 1, borderColor: '#ffffff22', alignItems: 'center', justifyContent: 'center' },
+  artArea: { flex: 1, minHeight: 260, maxHeight: 440, justifyContent: 'center', alignItems: 'center', paddingVertical: 32 },
+  artFrame: { width: '77%', maxWidth: 310, aspectRatio: 0.79, borderRadius: 12, overflow: 'hidden', elevation: 15, shadowOpacity: 0.35, shadowRadius: 25, shadowOffset: { width: 0, height: 15 } },
+  bookInfo: { marginTop: 5 },
+  bookTitle: { fontFamily: serif, color: '#f9f5ed', fontSize: 28, fontWeight: '700' },
+  author: { fontSize: 15, color: '#c9c2b6', marginTop: 6 },
+  bookActions: { marginTop: 21, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  chapter: { color: '#f4f0e8', fontSize: 15, fontWeight: '600' },
+  actionGroup: { flexDirection: 'row', gap: 12 },
+  action: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  chapterPanel: { backgroundColor: '#24231f', padding: 15, borderRadius: 13, marginTop: 12 },
+  chapterPanelTitle: { color: '#fff', fontWeight: '700', marginBottom: 6 },
+  chapterPanelText: { color: '#c8c2b6' },
+  timeline: { marginTop: 32 },
+  progressTrack: { height: 4, backgroundColor: '#ffffff48', borderRadius: 5, justifyContent: 'center' },
+  progressFill: { height: 4, backgroundColor: '#f2e5cf', borderRadius: 5 },
+  progressDot: { position: 'absolute', width: 12, height: 12, borderRadius: 6, backgroundColor: '#fff', marginLeft: -6 },
+  times: { marginTop: 14, flexDirection: 'row', justifyContent: 'space-between' },
+  timeText: { color: '#c9c2b7', fontSize: 12 },
+  controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 34 },
+  smallControl: { minWidth: 42, minHeight: 50, alignItems: 'center', justifyContent: 'center' },
+  speed: { color: '#f3eee5', fontSize: 17, fontWeight: '700' },
+  skipText: { position: 'absolute', fontSize: 10, fontWeight: '700', color: '#fff', top: 22 },
+  play: { width: 78, height: 78, borderRadius: 39, backgroundColor: '#f5eee2', alignItems: 'center', justifyContent: 'center' },
+  sleepLabel: { marginTop: 16, textAlign: 'center', color: '#bcb6a9', fontSize: 12 },
+  notice: { marginTop: 14, textAlign: 'center', color: '#e7cfaa', fontSize: 13 },
+});
+
 function Home() {
   const insets = useSafeAreaInsets();
   const backdrop = useRef<ComponentRef<typeof BlurTargetView>>(null);
@@ -621,51 +708,8 @@ function Home() {
           </Pressable>
         ))}
       </View>
-      <Modal
-        visible={selected !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setSelected(null)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalBody} accessibilityViewIsModal>
-            <Text style={styles.modalTitle} accessibilityRole="header">
-              {selected?.title ?? ''}
-            </Text>
-            {selected && <Text style={styles.featureMeta}>{selected.author} · {selected.genre}</Text>}
-            <Text style={styles.modalCopy}>
-              Ses kaydı henüz eklenmedi.
-            </Text>
-            {selected && library && (
-              <>
-                <Pressable accessibilityRole="button" onPress={() => toggleSaved(selected.id)} style={styles.libraryBack}>
-                  <Feather name="bookmark" size={18} color={accent} />
-                  <Text style={styles.libraryAction}>{library.saved.includes(selected.id) ? 'Sonra Dinle’den Kaldır' : 'Sonra Dinle’ye Ekle'}</Text>
-                </Pressable>
-                {library.lists.length > 0 && (
-                  <ScrollView style={styles.modalLists} keyboardShouldPersistTaps="handled">
-                    {library.lists.map((list) => {
-                      const included = list.books.includes(selected.id);
-                      return (
-                        <Pressable key={list.id} accessibilityRole="checkbox" accessibilityState={{ checked: included }} onPress={() => toggleListBook(list.id, selected.id)} style={styles.libraryBack}>
-                          <Feather name={included ? 'check-square' : 'square'} size={17} color={accent} />
-                          <Text style={styles.libraryAction}>{list.name}</Text>
-                        </Pressable>
-                      );
-                    })}
-                  </ScrollView>
-                )}
-              </>
-            )}
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setSelected(null)}
-              style={({ pressed }) => [styles.listen, pressed && styles.pressed]}
-            >
-              <Text style={styles.listenText}>Kapat</Text>
-            </Pressable>
-          </View>
-        </View>
+      <Modal visible={selected !== null} animationType="slide" onRequestClose={() => setSelected(null)}>
+        {selected && <ListeningScreen book={selected} onClose={() => setSelected(null)} saved={!!library?.saved.includes(selected.id)} onToggleSaved={() => toggleSaved(selected.id)} />}
       </Modal>
     </View>
   );
