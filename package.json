@@ -6,7 +6,9 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "start:tunnel": "expo start --tunnel --clear",
+    "start:lan": "expo start --lan"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
