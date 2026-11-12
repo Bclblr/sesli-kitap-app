@@ -55,7 +55,7 @@ const emptyLibrary: LibraryData = { saved: [], lists: [] };
 const tabs: { id: Tab; label: string; icon: IconName }[] = [
   { id: 'home', label: 'Ana Sayfa', icon: 'home' },
   { id: 'search', label: 'Ara', icon: 'search' },
-  { id: 'library', label: 'Kitaplığım', icon: 'bookmark' },
+  { id: 'library', label: 'Kitaplığım', icon: 'book-open' },
   { id: 'profile', label: 'Profil', icon: 'user' },
 ];
 
