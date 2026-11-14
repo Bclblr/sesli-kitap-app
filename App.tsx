@@ -538,6 +538,7 @@ function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; 
   const [loadingAudio, setLoadingAudio] = useState(false);
   const requestActive = useRef(true);
   const hasSource = useRef(false);
+  const [waitingForSource, setWaitingForSource] = useState(false);
   const progress = status.duration > 0
     ? Math.min(100, status.currentTime / status.duration * 100)
     : 0;
@@ -555,6 +556,30 @@ function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; 
     }, sleepIndex * 15 * 60_000);
     return () => clearTimeout(timeout);
   }, [player, sleepIndex]);
+
+  useEffect(() => {
+    if (!waitingForSource) return;
+    if (status.isLoaded) {
+      setWaitingForSource(false);
+      try {
+        player.play();
+        player.setPlaybackRate(speeds[speedIndex]);
+        hasSource.current = true;
+      } catch {
+        setNotice('Oynatma başlatılamadı. Tekrar dene.');
+      }
+    }
+  }, [player, waitingForSource, status.isLoaded, speedIndex]);
+
+  useEffect(() => {
+    if (!waitingForSource) return;
+    const timeout = setTimeout(() => {
+      setWaitingForSource(false);
+      player.pause();
+      setNotice('Ses dosyası zamanında yüklenemedi. Tekrar dene.');
+    }, 20000);
+    return () => clearTimeout(timeout);
+  }, [player, waitingForSource]);
 
   async function togglePlayback() {
     if (!book.audioPath) {
@@ -574,20 +599,25 @@ function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; 
     }
     setLoadingAudio(true);
     setNotice('');
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
-      const { data, error } = await supabase.storage.from('book-audio').createSignedUrl(book.audioPath, 7200);
+      const signedUrl = await Promise.race([
+        supabase.storage.from('book-audio').createSignedUrl(book.audioPath, 7200),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => reject(new Error('Ses bağlantısı zaman aşımı')), 12000);
+        }),
+      ]);
       if (!requestActive.current) return;
-      if (error || !data) {
-        setNotice('Ses kaydı açılamadı. Erişim yetkini veya bağlantını kontrol edip tekrar dene.');
+      if (signedUrl.error || !signedUrl.data) {
+        setNotice('Ses bağlantısı alınamadı. Erişim yetkini veya bağlantını kontrol et.');
         return;
       }
-      player.replace(data.signedUrl);
-      player.setPlaybackRate(speeds[speedIndex]);
-      player.play();
-      hasSource.current = true;
+      player.replace(signedUrl.data.signedUrl);
+      setWaitingForSource(true);
     } catch {
-      if (requestActive.current) setNotice('Ses kaydı açılamadı. Tekrar dene.');
+      if (requestActive.current) setNotice('Ses bağlantısı açılmadı. Tekrar dene.');
     } finally {
+      clearTimeout(timeout);
       if (requestActive.current) setLoadingAudio(false);
     }
   }
@@ -636,7 +666,7 @@ function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; 
         <View style={playerStyles.controls}>
           <Pressable accessibilityRole="button" accessibilityLabel="Oynatma hızı" onPress={changeSpeed} style={playerStyles.smallControl}><Text style={playerStyles.speed}>{speeds[speedIndex].toFixed(2).replace(/0$/, '').replace('.', ',')}×</Text></Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="15 saniye geri" onPress={() => skip(-15)} style={playerStyles.smallControl}><Feather name="rotate-ccw" size={28} color="#f3efe8" /><Text style={playerStyles.skipText}>15</Text></Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel={status.playing ? 'Duraklat' : 'Oynat'} disabled={loadingAudio} onPress={togglePlayback} style={playerStyles.play}><Feather name={loadingAudio ? "loader" : status.playing ? "pause" : "play"} size={30} color="#171713" /></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={status.playing ? 'Duraklat' : 'Oynat'} disabled={loadingAudio || waitingForSource} onPress={togglePlayback} style={playerStyles.play}><Feather name={loadingAudio || waitingForSource ? "loader" : status.playing ? "pause" : "play"} size={30} color="#171713" /></Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="15 saniye ileri" onPress={() => skip(15)} style={playerStyles.smallControl}><Feather name="rotate-cw" size={28} color="#f3efe8" /><Text style={playerStyles.skipText}>15</Text></Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Uyku zamanlayıcısı" onPress={() => setSleepIndex((sleepIndex + 1) % sleepOptions.length)} style={playerStyles.smallControl}><Feather name="moon" size={24} color={sleepIndex ? accent : '#f3efe8'} /></Pressable>
         </View>
