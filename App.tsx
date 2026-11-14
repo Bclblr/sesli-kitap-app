@@ -1,3 +1,4 @@
+import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import AdminScreen from './AdminScreen';
 import { supabase } from './supabase';
 import type { Session } from '@supabase/supabase-js';
@@ -33,6 +34,7 @@ type Book = {
   mark: string;
   progress?: number;
   coverUrl?: string;
+  audioPath?: string;
 };
 
 const featured: Book = {
@@ -518,6 +520,11 @@ const profileStyles = StyleSheet.create({
 });
 
 
+function playbackTime(seconds: number) {
+  const total = Math.max(0, Math.floor(seconds || 0));
+  return Math.floor(total / 60) + ':' + String(total % 60).padStart(2, '0');
+}
+
 function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; onClose: () => void; saved: boolean; onToggleSaved: () => void }) {
   const insets = useSafeAreaInsets();
   const [speedIndex, setSpeedIndex] = useState(1);
@@ -526,8 +533,76 @@ function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; 
   const [notice, setNotice] = useState('');
   const speeds = [0.75, 1, 1.25, 1.5, 2];
   const sleepOptions = ['Kapalı', '15 dk', '30 dk', '45 dk'];
-  const progress = book.progress ?? 0;
-  const unavailable = () => setNotice('Bu kitap için ses kaydı henüz eklenmedi.');
+  const player = useAudioPlayer(null);
+  const status = useAudioPlayerStatus(player);
+  const [loadingAudio, setLoadingAudio] = useState(false);
+  const requestActive = useRef(true);
+  const hasSource = useRef(false);
+  const progress = status.duration > 0
+    ? Math.min(100, status.currentTime / status.duration * 100)
+    : 0;
+
+  useEffect(() => {
+    requestActive.current = true;
+    return () => { requestActive.current = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!sleepIndex) return;
+    const timeout = setTimeout(() => {
+      player.pause();
+      setSleepIndex(0);
+    }, sleepIndex * 15 * 60_000);
+    return () => clearTimeout(timeout);
+  }, [player, sleepIndex]);
+
+  async function togglePlayback() {
+    if (!book.audioPath) {
+      setNotice('Bu kitap için ses kaydı henüz eklenmedi.');
+      return;
+    }
+    if (status.playing) {
+      player.pause();
+      return;
+    }
+    if (hasSource.current) {
+      if (status.didJustFinish || (status.duration > 0 && status.currentTime >= status.duration)) {
+        await player.seekTo(0);
+      }
+      if (requestActive.current) player.play();
+      return;
+    }
+    setLoadingAudio(true);
+    setNotice('');
+    try {
+      const { data, error } = await supabase.storage.from('book-audio').createSignedUrl(book.audioPath, 7200);
+      if (!requestActive.current) return;
+      if (error || !data) {
+        setNotice('Ses kaydı açılamadı. Erişim yetkini veya bağlantını kontrol edip tekrar dene.');
+        return;
+      }
+      player.replace(data.signedUrl);
+      player.setPlaybackRate(speeds[speedIndex]);
+      player.play();
+      hasSource.current = true;
+    } catch {
+      if (requestActive.current) setNotice('Ses kaydı açılamadı. Tekrar dene.');
+    } finally {
+      if (requestActive.current) setLoadingAudio(false);
+    }
+  }
+
+  function skip(seconds: number) {
+    if (!status.isLoaded || status.duration <= 0) return;
+    void player.seekTo(Math.max(0, Math.min(status.duration, status.currentTime + seconds)));
+  }
+
+  function changeSpeed() {
+    const next = (speedIndex + 1) % speeds.length;
+    setSpeedIndex(next);
+    if (hasSource.current) player.setPlaybackRate(speeds[next]);
+  }
+
   return (
     <View style={playerStyles.root}>
       <LinearGradient colors={[book.paper, book.paper + 'ee', '#161512', '#090a09']} locations={[0, 0.26, 0.67, 1]} style={StyleSheet.absoluteFill} />
@@ -552,20 +627,20 @@ function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; 
               <Pressable accessibilityRole="button" accessibilityLabel={saved ? 'Kitaplıktan kaldır' : 'Kitaplığıma ekle'} onPress={onToggleSaved} style={playerStyles.action}><Feather name={saved ? 'bookmark' : 'bookmark'} size={22} color={saved ? accent : '#f1ece3'} /></Pressable>
             </View>
           </View>
-          {showChapters && <View style={playerStyles.chapterPanel}><Text style={playerStyles.chapterPanelTitle}>Bölümler</Text><Text style={playerStyles.chapterPanelText}>Bölüm 1 · Ses kaydı bekleniyor</Text></View>}
+          {showChapters && <View style={playerStyles.chapterPanel}><Text style={playerStyles.chapterPanelTitle}>Bölümler</Text><Text style={playerStyles.chapterPanelText}>{book.audioPath ? 'Bölüm 1' : 'Bölüm 1 · Ses kaydı bekleniyor'}</Text></View>}
         </View>
         <View style={playerStyles.timeline}>
           <View style={playerStyles.progressTrack}><View style={[playerStyles.progressFill, { width: `${progress}%` }]} /><View style={[playerStyles.progressDot, { left: `${progress}%` }]} /></View>
-          <View style={playerStyles.times}><Text style={playerStyles.timeText}>{progress ? `% ${progress} tamamlandı` : '00:00'}</Text><Text style={playerStyles.timeText}>Süre henüz bilinmiyor</Text></View>
+          <View style={playerStyles.times}><Text style={playerStyles.timeText}>{playbackTime(status.currentTime)}</Text><Text style={playerStyles.timeText}>{status.duration > 0 ? playbackTime(status.duration) : '–:––'}</Text></View>
         </View>
         <View style={playerStyles.controls}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Oynatma hızı" onPress={() => setSpeedIndex((speedIndex + 1) % speeds.length)} style={playerStyles.smallControl}><Text style={playerStyles.speed}>{speeds[speedIndex].toFixed(2).replace(/0$/, '').replace('.', ',')}×</Text></Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="15 saniye geri" onPress={unavailable} style={playerStyles.smallControl}><Feather name="rotate-ccw" size={28} color="#f3efe8" /><Text style={playerStyles.skipText}>15</Text></Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="Oynat" onPress={unavailable} style={playerStyles.play}><Feather name="play" size={30} color="#171713" style={{ marginLeft: 4 }} /></Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="15 saniye ileri" onPress={unavailable} style={playerStyles.smallControl}><Feather name="rotate-cw" size={28} color="#f3efe8" /><Text style={playerStyles.skipText}>15</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Oynatma hızı" onPress={changeSpeed} style={playerStyles.smallControl}><Text style={playerStyles.speed}>{speeds[speedIndex].toFixed(2).replace(/0$/, '').replace('.', ',')}×</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="15 saniye geri" onPress={() => skip(-15)} style={playerStyles.smallControl}><Feather name="rotate-ccw" size={28} color="#f3efe8" /><Text style={playerStyles.skipText}>15</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={status.playing ? 'Duraklat' : 'Oynat'} disabled={loadingAudio} onPress={togglePlayback} style={playerStyles.play}><Feather name={loadingAudio ? "loader" : status.playing ? "pause" : "play"} size={30} color="#171713" /></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="15 saniye ileri" onPress={() => skip(15)} style={playerStyles.smallControl}><Feather name="rotate-cw" size={28} color="#f3efe8" /><Text style={playerStyles.skipText}>15</Text></Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Uyku zamanlayıcısı" onPress={() => setSleepIndex((sleepIndex + 1) % sleepOptions.length)} style={playerStyles.smallControl}><Feather name="moon" size={24} color={sleepIndex ? accent : '#f3efe8'} /></Pressable>
         </View>
-        <Text style={playerStyles.sleepLabel}>{sleepIndex ? `Uyku zamanlayıcısı: ${sleepOptions[sleepIndex]} (ses kaydı eklendiğinde kullanılabilir)` : ' '}</Text>
+        <Text style={playerStyles.sleepLabel}>{sleepIndex ? `Uyku zamanlayıcısı: ${sleepOptions[sleepIndex]}` : ' '}</Text>
         {!!notice && <Text accessibilityLiveRegion="polite" style={playerStyles.notice}>{notice}</Text>}
       </ScrollView>
     </View>
@@ -679,7 +754,7 @@ function Home({ session }: { session: Session }) {
     let active = true;
 
     supabase.from('books')
-      .select('id,title,author,genre,cover_path')
+      .select('id,title,author,genre,cover_path,audio_path')
       .eq('published', true)
       .order('created_at', { ascending: false })
       .then(({ data, error }) => {
@@ -692,6 +767,7 @@ function Home({ session }: { session: Session }) {
           paper: '#333e38',
           ink: '#f0e5d2',
           mark: book.title.slice(0, 2).toUpperCase(),
+          audioPath: book.audio_path ?? undefined,
           coverUrl: book.cover_path
             ? supabase.storage.from('book-covers').getPublicUrl(book.cover_path).data.publicUrl
             : undefined,
@@ -836,7 +912,7 @@ function Home({ session }: { session: Session }) {
         ))}
       </View>
       <Modal visible={selected !== null} animationType="slide" onRequestClose={() => setSelected(null)}>
-        {selected && <ListeningScreen book={selected} onClose={() => setSelected(null)} saved={!!library?.saved.includes(selected.id)} onToggleSaved={() => toggleSaved(selected.id)} />}
+        {selected && <ListeningScreen key={selected.id} book={selected} onClose={() => setSelected(null)} saved={!!library?.saved.includes(selected.id)} onToggleSaved={() => toggleSaved(selected.id)} />}
       </Modal>
     </View>
   );
