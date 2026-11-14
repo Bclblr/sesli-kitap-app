@@ -1,4 +1,5 @@
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
+import { File, Paths } from 'expo-file-system';
 import AdminScreen from './AdminScreen';
 import { supabase } from './supabase';
 import type { Session } from '@supabase/supabase-js';
@@ -520,6 +521,14 @@ const profileStyles = StyleSheet.create({
 });
 
 
+function deleteAudioFile(file: File | null) {
+  try {
+    if (file?.exists) file.delete();
+  } catch {
+    // The system may already have removed the temporary file.
+  }
+}
+
 function playbackTime(seconds: number) {
   const total = Math.max(0, Math.floor(seconds || 0));
   return Math.floor(total / 60) + ':' + String(total % 60).padStart(2, '0');
@@ -538,6 +547,8 @@ function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; 
   const [loadingAudio, setLoadingAudio] = useState(false);
   const requestActive = useRef(true);
   const hasSource = useRef(false);
+  const download = useRef<AbortController | null>(null);
+  const audioFile = useRef<File | null>(null);
   const [waitingForSource, setWaitingForSource] = useState(false);
   const progress = status.duration > 0
     ? Math.min(100, status.currentTime / status.duration * 100)
@@ -545,7 +556,11 @@ function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; 
 
   useEffect(() => {
     requestActive.current = true;
-    return () => { requestActive.current = false; };
+    return () => {
+      requestActive.current = false;
+      download.current?.abort();
+      deleteAudioFile(audioFile.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -565,6 +580,7 @@ function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; 
         player.play();
         player.setPlaybackRate(speeds[speedIndex]);
         hasSource.current = true;
+        setNotice('');
       } catch {
         setNotice('Oynatma başlatılamadı. Tekrar dene.');
       }
@@ -576,8 +592,8 @@ function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; 
     const timeout = setTimeout(() => {
       setWaitingForSource(false);
       player.pause();
-      setNotice('Ses dosyası zamanında yüklenemedi. Tekrar dene.');
-    }, 20000);
+      setNotice('İndirilen ses dosyası oynatıcıda açılamadı. Tekrar dene.');
+    }, 15000);
     return () => clearTimeout(timeout);
   }, [player, waitingForSource]);
 
@@ -598,7 +614,8 @@ function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; 
       return;
     }
     setLoadingAudio(true);
-    setNotice('');
+    setNotice('Ses bağlantısı hazırlanıyor…');
+    let file: File | null = null;
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       const signedUrl = await Promise.race([
@@ -612,12 +629,31 @@ function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; 
         setNotice('Ses bağlantısı alınamadı. Erişim yetkini veya bağlantını kontrol et.');
         return;
       }
-      player.replace(signedUrl.data.signedUrl);
+      clearTimeout(timeout);
+      const controller = new AbortController();
+      download.current = controller;
+      timeout = setTimeout(() => controller.abort(), 60_000);
+      const extension = book.audioPath.match(/\.([a-z0-9]+)$/i)?.[1] ?? 'mp3';
+      deleteAudioFile(audioFile.current);
+      file = new File(Paths.cache, `playback-${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`);
+      audioFile.current = file;
+      setNotice('Ses dosyası indiriliyor…');
+      const task = File.createDownloadTask(signedUrl.data.signedUrl, file, { signal: controller.signal });
+      const localFile = await task.downloadAsync();
+      if (!requestActive.current) {
+        deleteAudioFile(localFile);
+        return;
+      }
+      if (!localFile || !localFile.size) throw new Error('Audio download is empty');
+      setNotice('Ses hazırlanıyor…');
+      player.replace(localFile.uri);
       setWaitingForSource(true);
     } catch {
-      if (requestActive.current) setNotice('Ses bağlantısı açılmadı. Tekrar dene.');
+      deleteAudioFile(file);
+      if (requestActive.current) setNotice(file ? 'Ses dosyası indirilemedi. Bağlantını kontrol edip tekrar dene.' : 'Ses bağlantısı açılmadı. Tekrar dene.');
     } finally {
       clearTimeout(timeout);
+      download.current = null;
       if (requestActive.current) setLoadingAudio(false);
     }
   }
