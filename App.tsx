@@ -670,10 +670,37 @@ function Home({ session }: { session: Session }) {
   const [selected, setSelected] = useState<Book | null>(null);
   const [lastOpened, setLastOpened] = useState<Book | null>(null);
   const [remoteBooks,setRemoteBooks] = useState<Book[]>([]);
-  useEffect(()=>{supabase.from('books').select('id,title,author,genre,cover_path').eq('published',true).then(({data})=>{if(data)setRemoteBooks(data.map(b=>({id:b.id,title:b.title,author:b.author,genre:b.genre,paper:'#333e38',ink:'#f0e5d2',mark:b.title.slice(0,2).toUpperCase(),coverUrl:b.cover_path?supabase.storage.from('book-covers').getPublicUrl(b.cover_path).data.publicUrl:undefined})));});},[]);
   const [showProfile, setShowProfile] = useState(false);
   const [isAdmin,setIsAdmin] = useState(false);
   const [showAdmin,setShowAdmin] = useState(false);
+
+  useEffect(() => {
+    if (showAdmin || showProfile) return;
+    let active = true;
+
+    supabase.from('books')
+      .select('id,title,author,genre,cover_path')
+      .eq('published', true)
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (!active || error || !data) return;
+        setRemoteBooks(data.map((book) => ({
+          id: book.id,
+          title: book.title,
+          author: book.author,
+          genre: book.genre,
+          paper: '#333e38',
+          ink: '#f0e5d2',
+          mark: book.title.slice(0, 2).toUpperCase(),
+          coverUrl: book.cover_path
+            ? supabase.storage.from('book-covers').getPublicUrl(book.cover_path).data.publicUrl
+            : undefined,
+        })));
+      });
+
+    return () => { active = false; };
+  }, [showAdmin, showProfile]);
+
   useEffect(()=>{supabase.from('admins').select('user_id').eq('user_id',session.user.id).maybeSingle().then(({data})=>setIsAdmin(!!data));},[session.user.id]);
   const [activeTab, setActiveTab] = useState<Exclude<Tab, 'profile'>>('home');
   const [library, setLibrary] = useState<LibraryData | null>(null);
