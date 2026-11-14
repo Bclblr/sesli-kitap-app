@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import { File } from 'expo-file-system';
 import { supabase } from './supabase';
 
 type BookRow = { id: string; title: string; author: string; genre: string; description: string; published: boolean; premium: boolean; cover_path: string | null; audio_path: string | null };
-const empty = { title: '', author: '', genre: '', description: '', published: false, premium: false, cover_path: null, audio_path: null };
+const empty: Omit<BookRow, 'id'> = { title: '', author: '', genre: '', description: '', published: false, premium: false, cover_path: null, audio_path: null };
 export default function AdminScreen({ onClose }: { onClose: () => void }) {
  const [tab,setTab]=useState<'books'|'users'|'stats'>('books');
  const [books,setBooks]=useState<BookRow[]>([]);
@@ -34,9 +35,9 @@ export default function AdminScreen({ onClose }: { onClose: () => void }) {
      const asset=result.assets[0];
      const ext=(asset.name.split('.').pop()??(kind==='cover'?'jpg':'mp3')).toLowerCase();
      const path=`${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-     const blob=await (await fetch(asset.uri)).blob();
+     const fileData=await new File(asset.uri).arrayBuffer();
      const bucket=kind==='cover'?'book-covers':'book-audio';
-     const {error}=await supabase.storage.from(bucket).upload(path,blob,{contentType:asset.mimeType??(kind==='cover'?'image/jpeg':'audio/mpeg')});
+     const {error}=await supabase.storage.from(bucket).upload(path,fileData,{contentType:asset.mimeType??(kind==='cover'?'image/jpeg':'audio/mpeg')});
      if(error)throw error;
      setForm(p=>({...p,[kind==='cover'?'cover_path':'audio_path']:path}));
      setMessage('Dosya yüklendi. Kitabı kaydederek işlemi tamamla.');

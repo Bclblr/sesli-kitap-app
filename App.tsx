@@ -20,6 +20,9 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+const accent = '#dfb578';
+const serif = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
+
 type Book = {
   id: string;
   title: string;
@@ -243,7 +246,6 @@ function LibraryScreen({ data, bottomPadding, onCreate, onOpen }: {
   const [newestFirst, setNewestFirst] = useState(true);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
-  useEffect(() => { supabase.from('profiles').select('display_name').eq('id', userId).maybeSingle().then(({ data }) => { if (data) setName(data.display_name ?? ''); }); }, [userId]);
   const section = librarySections.find((item) => item.id === collection);
   const list = data.lists.find((item) => item.id === collection);
   const bookIds = collection === 'saved' ? data.saved : list?.books ?? [];
@@ -394,6 +396,7 @@ function ProfileScreen({ onClose, bottomPadding, userId, isAdmin, onAdmin }: { o
   const [page, setPage] = useState<ProfilePage>('profile');
   const [detail, setDetail] = useState('');
   const [name, setName] = useState('');
+  useEffect(() => { supabase.from('profiles').select('display_name').eq('id', userId).maybeSingle().then(({ data }) => { if (data) setName(data.display_name ?? ''); }); }, [userId]);
   const [editing, setEditing] = useState(false);
   const [notifications, setNotifications] = useState(true);
   const [language, setLanguage] = useState('Türkçe');
@@ -822,9 +825,6 @@ export default function App() {
   }, []);
   return <SafeAreaProvider>{loading ? <View style={{ flex: 1, backgroundColor: '#090a09', justifyContent: 'center', alignItems: 'center' }}><Text style={{ color: '#dfb578' }}>Yükleniyor...</Text></View> : session ? <Home key={session.user.id} session={session} /> : <AuthScreen />}</SafeAreaProvider>;
 }
-
-const accent = '#dfb578';
-const serif = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#000' },
