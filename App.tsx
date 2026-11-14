@@ -1,5 +1,4 @@
-import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
-import { File, Paths } from 'expo-file-system';
+import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import AdminScreen from './AdminScreen';
 import { supabase } from './supabase';
 import type { Session } from '@supabase/supabase-js';
@@ -521,14 +520,6 @@ const profileStyles = StyleSheet.create({
 });
 
 
-function deleteAudioFile(file: File | null) {
-  try {
-    if (file?.exists) file.delete();
-  } catch {
-    // The system may already have removed the temporary file.
-  }
-}
-
 function playbackTime(seconds: number) {
   const total = Math.max(0, Math.floor(seconds || 0));
   return Math.floor(total / 60) + ':' + String(total % 60).padStart(2, '0');
@@ -547,8 +538,6 @@ function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; 
   const [loadingAudio, setLoadingAudio] = useState(false);
   const requestActive = useRef(true);
   const hasSource = useRef(false);
-  const download = useRef<AbortController | null>(null);
-  const audioFile = useRef<File | null>(null);
   const [waitingForSource, setWaitingForSource] = useState(false);
   const progress = status.duration > 0
     ? Math.min(100, status.currentTime / status.duration * 100)
@@ -558,8 +547,6 @@ function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; 
     requestActive.current = true;
     return () => {
       requestActive.current = false;
-      download.current?.abort();
-      deleteAudioFile(audioFile.current);
     };
   }, []);
 
@@ -573,27 +560,20 @@ function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; 
   }, [player, sleepIndex]);
 
   useEffect(() => {
-    if (!waitingForSource) return;
-    if (status.isLoaded) {
-      setWaitingForSource(false);
-      try {
-        player.play();
-        player.setPlaybackRate(speeds[speedIndex]);
-        hasSource.current = true;
-        setNotice('');
-      } catch {
-        setNotice('Oynatma başlatılamadı. Tekrar dene.');
-      }
-    }
-  }, [player, waitingForSource, status.isLoaded, speedIndex]);
+    if (!waitingForSource || !status.playing) return;
+    setWaitingForSource(false);
+    setNotice('');
+    hasSource.current = true;
+  }, [waitingForSource, status.playing]);
 
   useEffect(() => {
     if (!waitingForSource) return;
     const timeout = setTimeout(() => {
-      setWaitingForSource(false);
       player.pause();
-      setNotice('İndirilen ses dosyası oynatıcıda açılamadı. Tekrar dene.');
-    }, 15000);
+      hasSource.current = false;
+      setWaitingForSource(false);
+      setNotice('Ses akışı başlatılamadı. Bağlantını kontrol edip tekrar dene.');
+    }, 20000);
     return () => clearTimeout(timeout);
   }, [player, waitingForSource]);
 
@@ -602,58 +582,49 @@ function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; 
       setNotice('Bu kitap için ses kaydı henüz eklenmedi.');
       return;
     }
+    if (loadingAudio || waitingForSource) return;
     if (status.playing) {
       player.pause();
       return;
     }
-    if (hasSource.current) {
-      if (status.didJustFinish || (status.duration > 0 && status.currentTime >= status.duration)) {
-        await player.seekTo(0);
-      }
-      if (requestActive.current) player.play();
-      return;
-    }
+
     setLoadingAudio(true);
     setNotice('Ses bağlantısı hazırlanıyor…');
-    let file: File | null = null;
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
-      const signedUrl = await Promise.race([
-        supabase.storage.from('book-audio').createSignedUrl(book.audioPath, 7200),
-        new Promise<never>((_, reject) => {
-          timeout = setTimeout(() => reject(new Error('Ses bağlantısı zaman aşımı')), 12000);
-        }),
-      ]);
+      if (hasSource.current) {
+        if (status.didJustFinish || (status.duration > 0 && status.currentTime >= status.duration)) {
+          await player.seekTo(0);
+        }
+      } else {
+        const { data, error } = await Promise.race([
+          supabase.storage.from('book-audio').createSignedUrl(book.audioPath, 7200),
+          new Promise<never>((_, reject) => {
+            timeout = setTimeout(() => reject(new Error('Ses bağlantısı zaman aşımı')), 12000);
+          }),
+        ]);
+        if (!requestActive.current) return;
+        if (error || !data) {
+          setNotice('Ses bağlantısı alınamadı. Erişim yetkini veya bağlantını kontrol et.');
+          return;
+        }
+        await setAudioModeAsync({ playsInSilentMode: true });
+        if (!requestActive.current) return;
+        player.replace({ uri: data.signedUrl, name: book.title });
+      }
       if (!requestActive.current) return;
-      if (signedUrl.error || !signedUrl.data) {
-        setNotice('Ses bağlantısı alınamadı. Erişim yetkini veya bağlantını kontrol et.');
-        return;
-      }
-      clearTimeout(timeout);
-      const controller = new AbortController();
-      download.current = controller;
-      timeout = setTimeout(() => controller.abort(), 60_000);
-      const extension = book.audioPath.match(/\.([a-z0-9]+)$/i)?.[1] ?? 'mp3';
-      deleteAudioFile(audioFile.current);
-      file = new File(Paths.cache, `playback-${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`);
-      audioFile.current = file;
-      setNotice('Ses dosyası indiriliyor…');
-      const task = File.createDownloadTask(signedUrl.data.signedUrl, file, { signal: controller.signal });
-      const localFile = await task.downloadAsync();
-      if (!requestActive.current) {
-        deleteAudioFile(localFile);
-        return;
-      }
-      if (!localFile || !localFile.size) throw new Error('Audio download is empty');
-      setNotice('Ses hazırlanıyor…');
-      player.replace(localFile.uri);
+      setNotice('Ses tamponlanıyor…');
       setWaitingForSource(true);
+      player.play();
+      player.setPlaybackRate(speeds[speedIndex]);
     } catch {
-      deleteAudioFile(file);
-      if (requestActive.current) setNotice(file ? 'Ses dosyası indirilemedi. Bağlantını kontrol edip tekrar dene.' : 'Ses bağlantısı açılmadı. Tekrar dene.');
+      if (requestActive.current) {
+        hasSource.current = false;
+        setWaitingForSource(false);
+        setNotice('Ses açılmadı. Tekrar dene.');
+      }
     } finally {
       clearTimeout(timeout);
-      download.current = null;
       if (requestActive.current) setLoadingAudio(false);
     }
   }
