@@ -1,3 +1,4 @@
+import { fetch as expoFetch } from 'expo/fetch';
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import AdminScreen from './AdminScreen';
 import { supabase } from './supabase';
@@ -520,6 +521,24 @@ const profileStyles = StyleSheet.create({
 });
 
 
+async function checkAudioRange(url: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await expoFetch(url, {
+      headers: { Range: 'bytes=0-1' },
+      signal: controller.signal,
+    });
+    const range = response.headers.get('content-range');
+    if (response.status !== 206 || !range?.startsWith('bytes 0-1/')) {
+      throw new Error(`Sunucu ses aralığını vermedi (HTTP ${response.status}).`);
+    }
+  } finally {
+    controller.abort();
+    clearTimeout(timeout);
+  }
+}
+
 function playbackTime(seconds: number) {
   const total = Math.max(0, Math.floor(seconds || 0));
   return Math.floor(total / 60) + ':' + String(total % 60).padStart(2, '0');
@@ -534,7 +553,7 @@ function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; 
   const speeds = [0.75, 1, 1.25, 1.5, 2];
   const sleepOptions = ['Kapalı', '15 dk', '30 dk', '45 dk'];
   const player = useAudioPlayer(null);
-  const status = useAudioPlayerStatus(player);
+  const status = useAudioPlayerStatus(player) as ReturnType<typeof useAudioPlayerStatus> & { error?: string | null };
   const [loadingAudio, setLoadingAudio] = useState(false);
   const requestActive = useRef(true);
   const hasSource = useRef(false);
@@ -564,7 +583,15 @@ function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; 
     setWaitingForSource(false);
     setNotice('');
     hasSource.current = true;
-  }, [waitingForSource, status.playing]);
+    player.setPlaybackRate([0.75, 1, 1.25, 1.5, 2][speedIndex]);
+  }, [player, waitingForSource, status.playing, speedIndex]);
+
+  useEffect(() => {
+    if (!waitingForSource || !status.error) return;
+    hasSource.current = false;
+    setWaitingForSource(false);
+    setNotice('Telefonun oynatıcısı ses dosyasını açamadı.');
+  }, [waitingForSource, status.error]);
 
   useEffect(() => {
     if (!waitingForSource) return;
@@ -572,7 +599,7 @@ function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; 
       player.pause();
       hasSource.current = false;
       setWaitingForSource(false);
-      setNotice('Ses akışı başlatılamadı. Bağlantını kontrol edip tekrar dene.');
+      setNotice('Sunucu ses aralığını verdi, ancak telefon oynatmayı başlatamadı.');
     }, 20000);
     return () => clearTimeout(timeout);
   }, [player, waitingForSource]);
@@ -608,6 +635,18 @@ function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; 
           setNotice('Ses bağlantısı alınamadı. Erişim yetkini veya bağlantını kontrol et.');
           return;
         }
+        setNotice('Ses akışı kontrol ediliyor…');
+        try {
+          await checkAudioRange(data.signedUrl);
+        } catch (error) {
+          if (requestActive.current) {
+            setNotice(error instanceof Error && error.message.startsWith('Sunucu')
+              ? error.message
+              : 'Ses sunucusundan zamanında yanıt alınamadı.');
+          }
+          return;
+        }
+        if (!requestActive.current) return;
         await setAudioModeAsync({ playsInSilentMode: true });
         if (!requestActive.current) return;
         player.replace({ uri: data.signedUrl, name: book.title });
@@ -616,7 +655,6 @@ function ListeningScreen({ book, onClose, saved, onToggleSaved }: { book: Book; 
       setNotice('Ses tamponlanıyor…');
       setWaitingForSource(true);
       player.play();
-      player.setPlaybackRate(speeds[speedIndex]);
     } catch {
       if (requestActive.current) {
         hasSource.current = false;
